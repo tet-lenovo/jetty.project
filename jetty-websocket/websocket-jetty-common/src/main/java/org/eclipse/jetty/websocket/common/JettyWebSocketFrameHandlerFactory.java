@@ -78,7 +78,7 @@ import org.eclipse.jetty.websocket.core.internal.util.ReflectUtils;
 public class JettyWebSocketFrameHandlerFactory extends ContainerLifeCycle
 {
     private final WebSocketContainer container;
-    private Map<Class<?>, JettyWebSocketFrameHandlerMetadata> metadataMap = new ConcurrentHashMap<>();
+    private final Map<Class<?>, JettyWebSocketFrameHandlerMetadata> metadataMap = new ConcurrentHashMap<>();
 
     public JettyWebSocketFrameHandlerFactory(WebSocketContainer container)
     {
@@ -88,7 +88,6 @@ public class JettyWebSocketFrameHandlerFactory extends ContainerLifeCycle
     public JettyWebSocketFrameHandlerMetadata getMetadata(Class<?> endpointClass)
     {
         JettyWebSocketFrameHandlerMetadata metadata = metadataMap.get(endpointClass);
-
         if (metadata == null)
         {
             metadata = createMetadata(endpointClass);

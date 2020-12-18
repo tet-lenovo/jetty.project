@@ -43,7 +43,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 @ManagedObject("JSR356 Server Container")
-public class JavaxWebSocketServerContainer extends JavaxWebSocketClientContainer implements javax.websocket.server.ServerContainer, LifeCycle.Listener
+public class JavaxWebSocketServerContainer extends JavaxWebSocketClientContainer implements javax.websocket.server.ServerContainer
 {
     public static final String JAVAX_WEBSOCKET_CONTAINER_ATTRIBUTE = javax.websocket.server.ServerContainer.class.getName();
     private static final Logger LOG = LoggerFactory.getLogger(JavaxWebSocketServerContainer.class);
@@ -91,13 +91,24 @@ public class JavaxWebSocketServerContainer extends JavaxWebSocketClientContainer
                 return coreClient;
             };
 
-            // Create the Jetty ServerContainer implementation
+            // Create the Jetty ServerContainer implementation.
             container = new JavaxWebSocketServerContainer(
                 WebSocketMappings.ensureMappings(servletContext),
                 WebSocketServerComponents.getWebSocketComponents(servletContext),
                 coreClientSupplier);
+
+            // Manage the LifeCycle off ContextHandler and remove on shutdown.
             contextHandler.addManaged(container);
-            contextHandler.addEventListener(container);
+            JavaxWebSocketServerContainer finalContainer = container;
+            contextHandler.addDurableListener(new LifeCycle.Listener()
+            {
+                @Override
+                public void lifeCycleStopped(LifeCycle event)
+                {
+                    contextHandler.removeBean(finalContainer);
+                    contextHandler.removeDurableListener(this);
+                }
+            });
         }
         // Store a reference to the ServerContainer per - javax.websocket spec 1.0 final - section 6.4: Programmatic Server Deployment
         servletContext.setAttribute(JAVAX_WEBSOCKET_CONTAINER_ATTRIBUTE, container);
@@ -138,18 +149,6 @@ public class JavaxWebSocketServerContainer extends JavaxWebSocketClientContainer
         super(components, coreClientSupplier);
         this.webSocketMappings = webSocketMappings;
         this.frameHandlerFactory = new JavaxWebSocketServerFrameHandlerFactory(this);
-    }
-
-    @Override
-    public void lifeCycleStopping(LifeCycle context)
-    {
-        ContextHandler contextHandler = (ContextHandler)context;
-        JavaxWebSocketServerContainer container = contextHandler.getBean(JavaxWebSocketServerContainer.class);
-        if (container == this)
-        {
-            contextHandler.removeBean(container);
-            LifeCycle.stop(container);
-        }
     }
 
     @Override

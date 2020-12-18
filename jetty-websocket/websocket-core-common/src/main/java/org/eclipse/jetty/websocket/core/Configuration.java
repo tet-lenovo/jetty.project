@@ -238,5 +238,18 @@ public interface Configuration
             if (maxOutgoingFrames != null)
                 configurable.setMaxOutgoingFrames(maxOutgoingFrames);
         }
+
+        public void reset()
+        {
+            idleTimeout = null;
+            writeTimeout = null;
+            autoFragment = null;
+            maxFrameSize = null;
+            outputBufferSize = null;
+            inputBufferSize = null;
+            maxBinaryMessageSize = null;
+            maxTextMessageSize = null;
+            maxOutgoingFrames = null;
+        }
     }
 }

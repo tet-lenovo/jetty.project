@@ -709,6 +709,28 @@ public class ContextHandler extends ScopedHandler implements Attributes, Gracefu
         return _programmaticListeners.contains(listener);
     }
 
+    /**
+     * Add a listener which will not be removed on {@link #doStop()}.
+     *
+     * @param listener the listener to add
+     */
+    public void addDurableListener(EventListener listener)
+    {
+        addEventListener(listener);
+        _durableListeners.add(listener);
+    }
+
+    /**
+     * Remove a durable listener so it is not added again on {@link #doStop()}.
+     *
+     * @param listener the listener to remove
+     */
+    public void removeDurableListener(EventListener listener)
+    {
+        removeEventListener(listener);
+        _durableListeners.remove(listener);
+    }
+
     public boolean isDurableListener(EventListener listener)
     {
         // The durable listeners are those set when the context is started

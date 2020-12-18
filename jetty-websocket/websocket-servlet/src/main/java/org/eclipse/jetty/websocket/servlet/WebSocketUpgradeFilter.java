@@ -32,6 +32,7 @@ import org.eclipse.jetty.server.handler.ContextHandler;
 import org.eclipse.jetty.servlet.FilterHolder;
 import org.eclipse.jetty.servlet.FilterMapping;
 import org.eclipse.jetty.servlet.ServletHandler;
+import org.eclipse.jetty.servlet.Source;
 import org.eclipse.jetty.util.annotation.ManagedObject;
 import org.eclipse.jetty.util.component.Dumpable;
 import org.eclipse.jetty.util.thread.AutoLock;
@@ -109,8 +110,10 @@ public class WebSocketUpgradeFilter implements Filter, Dumpable
             ContextHandler contextHandler = Objects.requireNonNull(ContextHandler.getContextHandler(servletContext));
             ServletHandler servletHandler = contextHandler.getChildHandlerByClass(ServletHandler.class);
 
+            // We want the filter to be removed on shutdown so source must not be EMBEDDED.
             final String pathSpec = "/*";
-            FilterHolder holder = new FilterHolder(new WebSocketUpgradeFilter());
+            FilterHolder holder = new FilterHolder(Source.TRANSIENT);
+            holder.setFilter(new WebSocketUpgradeFilter());
             holder.setName(WebSocketUpgradeFilter.class.getName());
             holder.setAsyncSupported(true);
 
@@ -208,5 +211,7 @@ public class WebSocketUpgradeFilter implements Filter, Dumpable
     @Override
     public void destroy()
     {
+        mapping = null;
+        defaultCustomizer.reset();
     }
 }

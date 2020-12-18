@@ -15,9 +15,6 @@ package org.eclipse.jetty.websocket.server.internal;
 
 import javax.servlet.ServletContext;
 
-import org.eclipse.jetty.server.handler.ContextHandler;
-import org.eclipse.jetty.servlet.ServletContextHandler;
-import org.eclipse.jetty.util.component.LifeCycle;
 import org.eclipse.jetty.websocket.api.WebSocketContainer;
 import org.eclipse.jetty.websocket.common.JettyWebSocketFrameHandler;
 import org.eclipse.jetty.websocket.common.JettyWebSocketFrameHandlerFactory;
@@ -26,12 +23,13 @@ import org.eclipse.jetty.websocket.core.server.FrameHandlerFactory;
 import org.eclipse.jetty.websocket.core.server.ServerUpgradeRequest;
 import org.eclipse.jetty.websocket.core.server.ServerUpgradeResponse;
 
-public class JettyServerFrameHandlerFactory extends JettyWebSocketFrameHandlerFactory implements FrameHandlerFactory, LifeCycle.Listener
+public class JettyServerFrameHandlerFactory extends JettyWebSocketFrameHandlerFactory implements FrameHandlerFactory
 {
+    public static final String JETTY_FRAME_HANDLER_FACTORY_ATTRIBUTE = JettyServerFrameHandlerFactory.class.getName();
+
     public static JettyServerFrameHandlerFactory getFactory(ServletContext context)
     {
-        ServletContextHandler contextHandler = ServletContextHandler.getServletContextHandler(context, "JettyServerFrameHandlerFactory");
-        return contextHandler.getBean(JettyServerFrameHandlerFactory.class);
+        return (JettyServerFrameHandlerFactory)context.getAttribute(JETTY_FRAME_HANDLER_FACTORY_ATTRIBUTE);
     }
 
     public JettyServerFrameHandlerFactory(WebSocketContainer container)
@@ -46,17 +44,5 @@ public class JettyServerFrameHandlerFactory extends JettyWebSocketFrameHandlerFa
         frameHandler.setUpgradeRequest(new DelegatedServerUpgradeRequest(upgradeRequest));
         frameHandler.setUpgradeResponse(new DelegatedServerUpgradeResponse(upgradeResponse));
         return frameHandler;
-    }
-
-    @Override
-    public void lifeCycleStopping(LifeCycle context)
-    {
-        ContextHandler contextHandler = (ContextHandler)context;
-        JettyServerFrameHandlerFactory factory = contextHandler.getBean(JettyServerFrameHandlerFactory.class);
-        if (factory != null)
-        {
-            contextHandler.removeBean(factory);
-            LifeCycle.stop(factory);
-        }
     }
 }

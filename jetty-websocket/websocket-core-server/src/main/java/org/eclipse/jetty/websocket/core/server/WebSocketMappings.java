@@ -25,9 +25,7 @@ import org.eclipse.jetty.http.pathmap.PathSpec;
 import org.eclipse.jetty.http.pathmap.RegexPathSpec;
 import org.eclipse.jetty.http.pathmap.ServletPathSpec;
 import org.eclipse.jetty.http.pathmap.UriTemplatePathSpec;
-import org.eclipse.jetty.server.handler.ContextHandler;
 import org.eclipse.jetty.util.component.Dumpable;
-import org.eclipse.jetty.util.component.LifeCycle;
 import org.eclipse.jetty.websocket.core.Configuration;
 import org.eclipse.jetty.websocket.core.CoreSession;
 import org.eclipse.jetty.websocket.core.FrameHandler;
@@ -49,7 +47,7 @@ import org.slf4j.LoggerFactory;
  * wrap that POJO with a {@link FrameHandler} and the customizer is used to configure the resulting
  * {@link CoreSession}.</p>
  */
-public class WebSocketMappings implements Dumpable, LifeCycle.Listener
+public class WebSocketMappings implements Dumpable
 {
     private static final Logger LOG = LoggerFactory.getLogger(WebSocketMappings.class);
     public static final String WEBSOCKET_MAPPING_ATTRIBUTE = WebSocketMappings.class.getName();
@@ -64,7 +62,9 @@ public class WebSocketMappings implements Dumpable, LifeCycle.Listener
         WebSocketMappings mapping = getMappings(servletContext);
         if (mapping == null)
         {
-            mapping = new WebSocketMappings(WebSocketServerComponents.getWebSocketComponents(servletContext));
+            // The mappings does not need to be a bean on the ContextHandler, it is not a LifeCycle, and is dumped by WSUpgradeFilter.
+            WebSocketComponents components = WebSocketServerComponents.getWebSocketComponents(servletContext);
+            mapping = new WebSocketMappings(components);
             servletContext.setAttribute(WEBSOCKET_MAPPING_ATTRIBUTE, mapping);
         }
 
@@ -122,18 +122,6 @@ public class WebSocketMappings implements Dumpable, LifeCycle.Listener
     public WebSocketMappings(WebSocketComponents components)
     {
         this.components = components;
-    }
-
-    @Override
-    public void lifeCycleStopping(LifeCycle context)
-    {
-        ContextHandler contextHandler = (ContextHandler)context;
-        WebSocketMappings mapping = contextHandler.getBean(WebSocketMappings.class);
-        if (mapping == this)
-        {
-            contextHandler.removeBean(mapping);
-            mappings.reset();
-        }
     }
 
     @Override

@@ -49,8 +49,9 @@ public class WebSocketComponents extends ContainerLifeCycle
         this.inflaterPool = (inflaterPool == null) ? new InflaterPool(CompressionPool.DEFAULT_CAPACITY, true) : inflaterPool;
         this.deflaterPool = (deflaterPool == null) ? new DeflaterPool(CompressionPool.DEFAULT_CAPACITY, Deflater.DEFAULT_COMPRESSION, true) : deflaterPool;
 
-        addBean(inflaterPool);
-        addBean(deflaterPool);
+        addBean(bufferPool, bufferPool == null);
+        addBean(inflaterPool, inflaterPool == null);
+        addBean(deflaterPool, deflaterPool == null);
     }
 
     public ByteBufferPool getBufferPool()

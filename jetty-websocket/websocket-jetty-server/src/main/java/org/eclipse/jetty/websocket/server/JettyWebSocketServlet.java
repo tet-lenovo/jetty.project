@@ -24,6 +24,7 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
 import org.eclipse.jetty.server.handler.ContextHandler;
+import org.eclipse.jetty.util.component.Dumpable;
 import org.eclipse.jetty.websocket.core.Configuration;
 import org.eclipse.jetty.websocket.core.WebSocketComponents;
 import org.eclipse.jetty.websocket.core.server.FrameHandlerFactory;
@@ -89,7 +90,7 @@ import org.slf4j.LoggerFactory;
  * <dd>If true, frames are automatically fragmented to respect the maximum frame size.<br>
  * </dl>
  */
-public abstract class JettyWebSocketServlet extends HttpServlet
+public abstract class JettyWebSocketServlet extends HttpServlet implements Dumpable
 {
     private static final Logger LOG = LoggerFactory.getLogger(JettyWebSocketServlet.class);
     private final CustomizedWebSocketServletFactory customizer = new CustomizedWebSocketServletFactory();
@@ -112,12 +113,10 @@ public abstract class JettyWebSocketServlet extends HttpServlet
      */
     private FrameHandlerFactory getFactory()
     {
-        JettyServerFrameHandlerFactory frameHandlerFactory = JettyServerFrameHandlerFactory.getFactory(getServletContext());
-
-        if (frameHandlerFactory == null)
+        JettyServerFrameHandlerFactory factory = JettyServerFrameHandlerFactory.getFactory(getServletContext());
+        if (factory == null)
             throw new IllegalStateException("JettyServerFrameHandlerFactory not found");
-
-        return frameHandlerFactory;
+        return factory;
     }
 
     @Override
@@ -126,7 +125,6 @@ public abstract class JettyWebSocketServlet extends HttpServlet
         try
         {
             ServletContext servletContext = getServletContext();
-
             components = WebSocketServerComponents.getWebSocketComponents(servletContext);
             mapping = new WebSocketMappings(components);
 
@@ -175,6 +173,14 @@ public abstract class JettyWebSocketServlet extends HttpServlet
     }
 
     @Override
+    public void destroy()
+    {
+        mapping = null;
+        components = null;
+        customizer.reset();
+    }
+
+    @Override
     protected void service(HttpServletRequest req, HttpServletResponse resp)
         throws ServletException, IOException
     {
@@ -190,6 +196,18 @@ public abstract class JettyWebSocketServlet extends HttpServlet
 
         // Handle normally
         super.service(req, resp);
+    }
+
+    @Override
+    public String dump()
+    {
+        return Dumpable.dump(this);
+    }
+
+    @Override
+    public void dump(Appendable out, String indent) throws IOException
+    {
+        Dumpable.dumpObjects(out, indent, this, mapping);
     }
 
     private class CustomizedWebSocketServletFactory extends Configuration.ConfigurationCustomizer implements JettyWebSocketServletFactory

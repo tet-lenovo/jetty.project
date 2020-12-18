@@ -13,11 +13,14 @@
 
 package org.eclipse.jetty.websocket.core.server;
 
+import java.util.Objects;
 import javax.servlet.ServletContext;
 
 import org.eclipse.jetty.io.ByteBufferPool;
 import org.eclipse.jetty.server.Server;
+import org.eclipse.jetty.server.handler.ContextHandler;
 import org.eclipse.jetty.util.DecoratedObjectFactory;
+import org.eclipse.jetty.util.component.LifeCycle;
 import org.eclipse.jetty.util.compression.DeflaterPool;
 import org.eclipse.jetty.util.compression.InflaterPool;
 import org.eclipse.jetty.websocket.core.WebSocketComponents;
@@ -36,27 +39,41 @@ public class WebSocketServerComponents extends WebSocketComponents
     public static final String WEBSOCKET_INFLATER_POOL_ATTRIBUTE = "jetty.websocket.inflater";
     public static final String WEBSOCKET_DEFLATER_POOL_ATTRIBUTE = "jetty.websocket.deflater";
 
-    WebSocketServerComponents(InflaterPool inflaterPool, DeflaterPool deflaterPool)
+    WebSocketServerComponents(ByteBufferPool bufferPool, InflaterPool inflaterPool, DeflaterPool deflaterPool)
     {
-        super(null, null, null, inflaterPool, deflaterPool);
+        super(null, null, bufferPool, inflaterPool, deflaterPool);
     }
 
     public static WebSocketComponents ensureWebSocketComponents(Server server, ServletContext servletContext)
     {
-        WebSocketComponents components = server.getBean(WebSocketComponents.class);
-        if (components == null)
+        WebSocketComponents components = (WebSocketComponents)servletContext.getAttribute(WEBSOCKET_COMPONENTS_ATTRIBUTE);
+        if (components != null)
+            return components;
+
+        InflaterPool inflaterPool = (InflaterPool)servletContext.getAttribute(WEBSOCKET_INFLATER_POOL_ATTRIBUTE);
+        if (inflaterPool == null)
+            inflaterPool = InflaterPool.ensurePool(server);
+
+        DeflaterPool deflaterPool = (DeflaterPool)servletContext.getAttribute(WEBSOCKET_DEFLATER_POOL_ATTRIBUTE);
+        if (deflaterPool == null)
+            deflaterPool = DeflaterPool.ensurePool(server);
+
+        ByteBufferPool bufferPool = server.getBean(ByteBufferPool.class);
+        components = new WebSocketServerComponents(bufferPool, inflaterPool, deflaterPool);
+
+        // Attach LifeCycle to Context and remove on shutdown.
+        ContextHandler contextHandler = Objects.requireNonNull(ContextHandler.getContextHandler(servletContext));
+        contextHandler.addManaged(components);
+        WebSocketComponents finalComponents = components;
+        contextHandler.addDurableListener(new LifeCycle.Listener()
         {
-            InflaterPool inflaterPool = (InflaterPool)servletContext.getAttribute(WEBSOCKET_INFLATER_POOL_ATTRIBUTE);
-            if (inflaterPool == null)
-                inflaterPool = InflaterPool.ensurePool(server);
-
-            DeflaterPool deflaterPool = (DeflaterPool)servletContext.getAttribute(WEBSOCKET_DEFLATER_POOL_ATTRIBUTE);
-            if (deflaterPool == null)
-                deflaterPool = DeflaterPool.ensurePool(server);
-
-            components = new WebSocketServerComponents(inflaterPool, deflaterPool);
-            server.addBean(components);
-        }
+            @Override
+            public void lifeCycleStopped(LifeCycle event)
+            {
+                contextHandler.removeBean(finalComponents);
+                contextHandler.removeDurableListener(this);
+            }
+        });
 
         servletContext.setAttribute(WEBSOCKET_COMPONENTS_ATTRIBUTE, components);
         return components;

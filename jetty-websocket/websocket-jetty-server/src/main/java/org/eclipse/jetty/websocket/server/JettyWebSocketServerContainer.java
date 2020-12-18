@@ -44,7 +44,7 @@ import org.eclipse.jetty.websocket.servlet.WebSocketUpgradeFilter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class JettyWebSocketServerContainer extends ContainerLifeCycle implements WebSocketContainer, WebSocketPolicy, LifeCycle.Listener
+public class JettyWebSocketServerContainer extends ContainerLifeCycle implements WebSocketContainer, WebSocketPolicy
 {
     public static final String JETTY_WEBSOCKET_CONTAINER_ATTRIBUTE = WebSocketContainer.class.getName();
 
@@ -55,32 +55,43 @@ public class JettyWebSocketServerContainer extends ContainerLifeCycle implements
 
     public static JettyWebSocketServerContainer ensureContainer(ServletContext servletContext)
     {
+        JettyWebSocketServerContainer container = getContainer(servletContext);
+        if (container != null)
+            return container;
+
         ServletContextHandler contextHandler = ServletContextHandler.getServletContextHandler(servletContext, "Javax Websocket");
         if (contextHandler.getServer() == null)
             throw new IllegalStateException("Server has not been set on the ServletContextHandler");
 
-        JettyWebSocketServerContainer container = getContainer(servletContext);
-        if (container == null)
+        // Find Pre-Existing executor.
+        Executor executor = (Executor)servletContext.getAttribute("org.eclipse.jetty.server.Executor");
+        if (executor == null)
+            executor = contextHandler.getServer().getThreadPool();
+
+        // Create the Jetty ServerContainer implementation.
+        WebSocketMappings mappings = WebSocketMappings.ensureMappings(servletContext);
+        container = new JettyWebSocketServerContainer(servletContext, mappings, executor);
+
+        // Manage LifeCycle with ContextHandler and remove on shutdown.
+        contextHandler.addManaged(container);
+        JettyWebSocketServerContainer finalContainer = container;
+        contextHandler.addDurableListener(new LifeCycle.Listener()
         {
-            // Find Pre-Existing executor
-            Executor executor = (Executor)servletContext.getAttribute("org.eclipse.jetty.server.Executor");
-            if (executor == null)
-                executor = contextHandler.getServer().getThreadPool();
+            @Override
+            public void lifeCycleStopped(LifeCycle event)
+            {
+                contextHandler.removeBean(finalContainer);
+                contextHandler.removeDurableListener(this);
+            }
+        });
 
-            // Create the Jetty ServerContainer implementation
-            WebSocketMappings mappings = WebSocketMappings.ensureMappings(servletContext);
-            container = new JettyWebSocketServerContainer(contextHandler, mappings, executor);
-            servletContext.setAttribute(JETTY_WEBSOCKET_CONTAINER_ATTRIBUTE, container);
-            contextHandler.addManaged(container);
-            contextHandler.addEventListener(container);
-        }
-
+        servletContext.setAttribute(JETTY_WEBSOCKET_CONTAINER_ATTRIBUTE, container);
         return container;
     }
 
     private static final Logger LOG = LoggerFactory.getLogger(JettyWebSocketServerContainer.class);
 
-    private final ServletContextHandler contextHandler;
+    private final ServletContext servletContext;
     private final WebSocketMappings webSocketMappings;
     private final FrameHandlerFactory frameHandlerFactory;
     private final Executor executor;
@@ -95,21 +106,18 @@ public class JettyWebSocketServerContainer extends ContainerLifeCycle implements
      * @param webSocketMappings the {@link WebSocketMappings} that this container belongs to
      * @param executor the {@link Executor} to use
      */
-    JettyWebSocketServerContainer(ServletContextHandler contextHandler, WebSocketMappings webSocketMappings, Executor executor)
+    JettyWebSocketServerContainer(ServletContext servletContext, WebSocketMappings webSocketMappings, Executor executor)
     {
-        this.contextHandler = contextHandler;
         this.webSocketMappings = webSocketMappings;
         this.executor = executor;
+        this.servletContext = servletContext;
 
-        // Ensure there is a FrameHandlerFactory
-        JettyServerFrameHandlerFactory factory = contextHandler.getBean(JettyServerFrameHandlerFactory.class);
-        if (factory == null)
-        {
-            factory = new JettyServerFrameHandlerFactory(this);
-            contextHandler.addManaged(factory);
-            contextHandler.addEventListener(factory);
-        }
-        frameHandlerFactory = factory;
+        // Ensure is no pre-existing FrameHandlerFactory.
+        if (JettyServerFrameHandlerFactory.getFactory(servletContext) != null)
+            throw new IllegalStateException("JettyServerFrameHandlerFactory already created.");
+
+        frameHandlerFactory = new JettyServerFrameHandlerFactory(this);
+        servletContext.setAttribute(JettyServerFrameHandlerFactory.JETTY_FRAME_HANDLER_FACTORY_ATTRIBUTE, frameHandlerFactory);
 
         addSessionListener(sessionTracker);
         addBean(sessionTracker);
@@ -121,7 +129,7 @@ public class JettyWebSocketServerContainer extends ContainerLifeCycle implements
         if (webSocketMappings.getWebSocketNegotiator(ps) != null)
             throw new WebSocketException("Duplicate WebSocket Mapping for PathSpec");
 
-        WebSocketUpgradeFilter.ensureFilter(contextHandler.getServletContext());
+        WebSocketUpgradeFilter.ensureFilter(servletContext);
         webSocketMappings.addMapping(ps,
             (req, resp) -> creator.createWebSocket(new DelegatedServerUpgradeRequest(req), new DelegatedServerUpgradeResponse(resp)),
             frameHandlerFactory, customizer);
