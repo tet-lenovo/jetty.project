@@ -16,7 +16,8 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicReference;
 
-import org.eclipse.jetty.http3.quic.QuicRawConnection;
+import org.eclipse.jetty.http3.quic.QuicConnection;
+import org.eclipse.jetty.http3.quic.QuicConnectionId;
 import org.eclipse.jetty.http3.quic.QuicStream;
 import org.eclipse.jetty.io.AbstractEndPoint;
 import org.eclipse.jetty.io.ByteBufferPool;
@@ -84,8 +85,8 @@ public class QuicConnector extends AbstractNetworkConnector implements ManagedSe
         _manager.accept(_acceptChannel, this);
     }
 
-    final ConcurrentMap<QuicRawConnection.QuicConnectionId, AbstractEndPoint> _endpoints = new ConcurrentHashMap<>();
-    final ConcurrentMap<QuicRawConnection.QuicConnectionId, QuicRawConnection> _connections = new ConcurrentHashMap<>();
+    final ConcurrentMap<QuicConnectionId, AbstractEndPoint> _endpoints = new ConcurrentHashMap<>();
+    final ConcurrentMap<QuicConnectionId, QuicConnection> _connections = new ConcurrentHashMap<>();
 
     final ConcurrentMap<Long, AbstractEndPoint> _endpoints2 = new ConcurrentHashMap<>();
 
@@ -105,8 +106,8 @@ public class QuicConnector extends AbstractNetworkConnector implements ManagedSe
 
                 while (packetRead.remaining() != 0)
                 {
-                    QuicRawConnection.QuicConnectionId quicConnectionId = QuicRawConnection.connectionId(packetRead);
-                    QuicRawConnection connection = _connections.get(quicConnectionId);
+                    QuicConnectionId quicConnectionId = QuicConnectionId.fromPacket(packetRead);
+                    QuicConnection connection = _connections.get(quicConnectionId);
                     if (connection != null)
                     {
                         connection.recv(packetRead);
@@ -132,7 +133,7 @@ public class QuicConnector extends AbstractNetworkConnector implements ManagedSe
                     {
                         //TODO this buffer has to be released eventually
                         ByteBuffer packetToWrite = getByteBufferPool().acquire(1500, true); //TODO replace 1500 with MTU
-                        QuicRawConnection newQuicConnection = QuicRawConnection.tryAccept(null, peer, packetRead, packetToWrite);
+                        QuicConnection newQuicConnection = QuicConnection.tryAccept(null, peer, packetRead, packetToWrite);
                         packetToWrite.flip();
                         //TODO what if it does not write?
                         int written = _acceptChannel.send(packetToWrite, peer);

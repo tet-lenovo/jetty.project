@@ -16,12 +16,12 @@ public class QuicStream
 {
     private static final Logger LOGGER = LoggerFactory.getLogger(QuicStream.class);
 
-    private final QuicRawConnection.StreamIterator streamIterator;
+    private final QuicConnection.StreamIterator streamIterator;
     private final LibQuiche.quiche_conn quicheConn;
     private final long streamId;
     private boolean receivedFin;
 
-    QuicStream(QuicRawConnection.StreamIterator streamIterator, LibQuiche.quiche_conn quicheConn, long streamId)
+    QuicStream(QuicConnection.StreamIterator streamIterator, LibQuiche.quiche_conn quicheConn, long streamId)
     {
         this.streamIterator = streamIterator;
         this.quicheConn = quicheConn;
@@ -45,6 +45,18 @@ public class QuicStream
             return 0;
         }
         return recv.intValue();
+    }
+
+    public int write(byte[] buffer, boolean fin) throws IOException
+    {
+        ssize_t sent = INSTANCE.quiche_conn_stream_send(quicheConn, new uint64_t(streamId), buffer, new size_t(buffer.length), fin);
+        LOGGER.debug("Sent {} byte(s) to stream {} (fin? {})", sent.intValue(), streamId, fin);
+        if (sent.intValue() < 0)
+        {
+            streamIterator.close();
+            return 0;
+        }
+        return sent.intValue();
     }
 
     public boolean isReceivedFin()

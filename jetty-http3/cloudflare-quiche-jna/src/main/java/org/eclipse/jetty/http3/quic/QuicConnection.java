@@ -28,9 +28,9 @@ import static org.eclipse.jetty.http3.quic.quiche.LibQuiche.QUICHE_MAX_CONN_ID_L
 import static org.eclipse.jetty.http3.quic.quiche.LibQuiche.quiche_error.QUICHE_ERR_DONE;
 import static org.eclipse.jetty.http3.quic.quiche.LibQuiche.quiche_error.errToString;
 
-public class QuicRawConnection implements Closeable
+public class QuicConnection implements Closeable
 {
-    private static final Logger LOGGER = LoggerFactory.getLogger(QuicRawConnection.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(QuicConnection.class);
     static
     {
         LibQuiche.Logging.enable();
@@ -38,14 +38,16 @@ public class QuicRawConnection implements Closeable
 
     private LibQuiche.quiche_conn quicheConn;
     private LibQuiche.quiche_config quicheConfig;
+    private QuicConnectionId quicConnectionId;
 
-    private QuicRawConnection(LibQuiche.quiche_conn quicheConn, LibQuiche.quiche_config quicheConfig)
+    private QuicConnection(LibQuiche.quiche_conn quicheConn, LibQuiche.quiche_config quicheConfig, QuicConnectionId quicConnectionId)
     {
         this.quicheConn = quicheConn;
         this.quicheConfig = quicheConfig;
+        this.quicConnectionId = quicConnectionId;
     }
 
-    public static QuicRawConnection connect(QuicConfig quicConfig, InetSocketAddress peer, int connectionIdLength) throws IOException
+    public static QuicConnection connect(QuicConfig quicConfig, InetSocketAddress peer, int connectionIdLength) throws IOException
     {
         if (connectionIdLength > LibQuiche.QUICHE_MAX_CONN_ID_LEN)
             throw new IOException("Connection ID length is too large: " + connectionIdLength + " > " + LibQuiche.QUICHE_MAX_CONN_ID_LEN);
@@ -53,7 +55,7 @@ public class QuicRawConnection implements Closeable
         new SecureRandom().nextBytes(scid);
         LibQuiche.quiche_config quicheConfig = buildConfig(quicConfig);
         LibQuiche.quiche_conn quicheConn = INSTANCE.quiche_connect(peer.getHostName(), scid, new size_t(scid.length), quicheConfig);
-        return new QuicRawConnection(quicheConn, quicheConfig);
+        return new QuicConnection(quicheConn, quicheConfig, null);
     }
 
     private static LibQuiche.quiche_config buildConfig(QuicConfig config) throws IOException
@@ -129,15 +131,6 @@ public class QuicRawConnection implements Closeable
         return LibQuiche.packet_type.typeToString(type);
     }
 
-    public class QuicConnectionId
-    {
-    }
-
-    public static QuicConnectionId connectionId(ByteBuffer packet)
-    {
-        return null;
-    }
-
     public static byte packetType(ByteBuffer packet)
     {
         uint8_t_pointer type = new uint8_t_pointer();
@@ -164,7 +157,7 @@ public class QuicRawConnection implements Closeable
         return type.getValue();
     }
 
-    public static QuicRawConnection tryAccept(QuicConfig quicConfig, SocketAddress peer, ByteBuffer packetRead, ByteBuffer packetToSend) throws IOException
+    public static QuicConnection tryAccept(QuicConfig quicConfig, SocketAddress peer, ByteBuffer packetRead, ByteBuffer packetToSend) throws IOException
     {
         uint8_t_pointer type = new uint8_t_pointer();
         uint32_t_pointer version = new uint32_t_pointer();
@@ -245,7 +238,7 @@ public class QuicRawConnection implements Closeable
         }
 
         LOGGER.debug("  < connection created");
-        QuicRawConnection quicConnection = new QuicRawConnection(quicheConn, quicheConfig);
+        QuicConnection quicConnection = new QuicConnection(quicheConn, quicheConfig, QuicConnectionId.fromCid(dcid, dcid_len));
         quicConnection.recv(packetRead);
         LOGGER.debug("accepted, immediately receiving the same packet - remaining in buffer: {}", packetRead.remaining());
         return quicConnection;
@@ -311,9 +304,19 @@ public class QuicRawConnection implements Closeable
         return token.array();
     }
 
+    public QuicConnectionId getQuicConnectionId()
+    {
+        return quicConnectionId;
+    }
+
     public Iterator<QuicStream> readableStreamsIterator()
     {
-        return new StreamIterator(quicheConn);
+        return new StreamIterator(quicheConn, false);
+    }
+
+    public Iterator<QuicStream> writableStreamsIterator()
+    {
+        return new StreamIterator(quicheConn, true);
     }
 
     static class StreamIterator implements Iterator<QuicStream>, Closeable
@@ -325,11 +328,14 @@ public class QuicRawConnection implements Closeable
         private boolean hasNext;
         private long nextStreamId;
 
-        public StreamIterator(LibQuiche.quiche_conn quicheConn)
+        public StreamIterator(LibQuiche.quiche_conn quicheConn, boolean write)
         {
-            quiche_stream_iter = INSTANCE.quiche_conn_readable(quicheConn);
+            if (write)
+                quiche_stream_iter = INSTANCE.quiche_conn_writable(quicheConn);
+            else
+                quiche_stream_iter = INSTANCE.quiche_conn_readable(quicheConn);
             this.quicheConn = quicheConn;
-            LOGGER.debug("Created stream iterator");
+            LOGGER.debug("Created {} stream iterator", (write ? "write" : "read"));
             iterNext();
         }
 
@@ -378,8 +384,8 @@ public class QuicRawConnection implements Closeable
     }
 
     /**
-     * Deplete the buffer of cipher text coming from the network.
-     * @param buffer the buffer to deplete.
+     * Read the buffer of cipher text coming from the network.
+     * @param buffer the buffer to read.
      * @return how many bytes were consumed.
      * @throws IOException
      */
@@ -478,7 +484,8 @@ public class QuicRawConnection implements Closeable
     public void streamSend(long streamId, String data, boolean fin) throws IOException
     {
         byte[] bytes = data.getBytes(StandardCharsets.UTF_8);
-        if (INSTANCE.quiche_conn_stream_send(quicheConn, new uint64_t(streamId), bytes, new size_t(bytes.length), fin).intValue() < 0)
-            throw new IOException("Error sending request");
+        int rc = INSTANCE.quiche_conn_stream_send(quicheConn, new uint64_t(streamId), bytes, new size_t(bytes.length), fin).intValue();
+        if (rc < 0)
+            throw new IOException("Error sending request: " + LibQuiche.quiche_error.errToString(rc));
     }
 }
