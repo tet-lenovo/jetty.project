@@ -1,333 +1,410 @@
 package org.eclipse.jetty.http3.server;
 
-import java.io.Closeable;
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.net.ServerSocket;
 import java.net.SocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.DatagramChannel;
-import java.nio.channels.SelectableChannel;
 import java.nio.channels.SelectionKey;
-import java.util.EventListener;
+import java.nio.channels.Selector;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.Iterator;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.Executor;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.TimeUnit;
+import java.util.function.LongConsumer;
 
+import org.eclipse.jetty.http3.quic.QuicConfig;
 import org.eclipse.jetty.http3.quic.QuicConnection;
 import org.eclipse.jetty.http3.quic.QuicConnectionId;
-import org.eclipse.jetty.http3.quic.QuicStream;
-import org.eclipse.jetty.io.AbstractEndPoint;
+import org.eclipse.jetty.http3.quic.quiche.LibQuiche;
 import org.eclipse.jetty.io.ByteBufferPool;
-import org.eclipse.jetty.io.Connection;
-import org.eclipse.jetty.io.EndPoint;
-import org.eclipse.jetty.io.ManagedSelector;
-import org.eclipse.jetty.io.SelectorManager;
 import org.eclipse.jetty.server.AbstractNetworkConnector;
-import org.eclipse.jetty.server.ConnectionFactory;
-import org.eclipse.jetty.server.HttpConnectionFactory;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.util.IO;
-import org.eclipse.jetty.util.annotation.ManagedAttribute;
-import org.eclipse.jetty.util.annotation.Name;
-import org.eclipse.jetty.util.thread.Scheduler;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-public class QuicConnector extends AbstractNetworkConnector implements ManagedSelector.Selectable
+public class QuicConnector extends AbstractNetworkConnector
 {
-    private final SelectorManager _manager;
-    private final AtomicReference<Closeable> _acceptor = new AtomicReference<>();
-    private volatile DatagramChannel _acceptChannel;
-    private volatile int _localPort = -1;
-    private volatile boolean _reuseAddress = true;
+    protected static final Logger LOG = LoggerFactory.getLogger(QuicConnector.class);
 
-    public QuicConnector(
-        @Name("server") Server server)
+    private Selector selector;
+    private DatagramChannel channel;
+    private QuicConfig quicConfig;
+
+    private final Map<QuicConnectionId, QuicEndPoint> endpoints = new ConcurrentHashMap<>();
+    private final Deque<Command> commands = new ArrayDeque<>();
+
+    public QuicConnector(Server server) throws IOException
     {
-        this(server, null, null, null, -1, new HttpConnectionFactory());
+        super(server, null, null, null, 0);
     }
 
-    public QuicConnector(
-        @Name("server") Server server,
-        @Name("executor") Executor executor,
-        @Name("scheduler") Scheduler scheduler,
-        @Name("bufferPool") ByteBufferPool bufferPool,
-        @Name("selectors") int selectors,
-        @Name("factories") ConnectionFactory... factories
-    )
+    public QuicConfig getQuicConfig()
     {
-        super(server, executor, scheduler, bufferPool, 0, factories);
-        _manager = newSelectorManager(getExecutor(), getScheduler(), selectors);
-        addBean(_manager, true);
+        return quicConfig;
     }
 
-    private SelectorManager newSelectorManager(Executor executor, Scheduler scheduler, int selectors)
+    public void setQuicConfig(QuicConfig quicConfig)
     {
-        return new QuicConnectorManager(executor, scheduler, selectors);
-    }
-
-    @Override
-    public Object getTransport()
-    {
-        return _acceptChannel;
-    }
-
-    @Override
-    protected void doStart() throws Exception
-    {
-        for (EventListener l : getBeans(SelectorManager.SelectorManagerListener.class))
-            _manager.addEventListener(l);
-
-        super.doStart();
-
-        _acceptChannel.configureBlocking(false);
-        _manager.accept(_acceptChannel, this);
-    }
-
-    final ConcurrentMap<QuicConnectionId, AbstractEndPoint> _endpoints = new ConcurrentHashMap<>();
-    final ConcurrentMap<QuicConnectionId, QuicConnection> _connections = new ConcurrentHashMap<>();
-
-    final ConcurrentMap<Long, AbstractEndPoint> _endpoints2 = new ConcurrentHashMap<>();
-
-    @Override
-    public Runnable onSelected()
-    {
-        //TODO alternate between reading and writing
-
-        ByteBuffer packetRead = getByteBufferPool().acquire(1500, true); //TODO replace 1500 with MTU
-        try
-        {
-            while (true)
-            {
-                SocketAddress peer = _acceptChannel.receive(packetRead);
-                if (peer == null)
-                    break;
-
-                while (packetRead.remaining() != 0)
-                {
-                    QuicConnectionId quicConnectionId = QuicConnectionId.fromPacket(packetRead);
-                    QuicConnection connection = _connections.get(quicConnectionId);
-                    if (connection != null)
-                    {
-                        connection.recv(packetRead);
-
-                        Iterator<QuicStream> it = connection.readableStreamsIterator();
-                        while (it.hasNext())
-                        {
-                            QuicStream stream = it.next();
-                            long streamId = stream.getStreamId();
-                            AbstractEndPoint endPoint = _endpoints2.get(streamId);
-
-                            // the following 3 lines could go into fill()
-//                            byte[] buf = new byte[8192];
-//                            stream.read(buf);
-//                            endPoint.dataArrived(buf);
-
-                            endPoint.getFillInterest().fillable();
-                        }
-                        //TODO figure out if we need to write
-
-                    }
-                    else
-                    {
-                        //TODO this buffer has to be released eventually
-                        ByteBuffer packetToWrite = getByteBufferPool().acquire(1500, true); //TODO replace 1500 with MTU
-                        QuicConnection newQuicConnection = QuicConnection.tryAccept(null, peer, packetRead, packetToWrite);
-                        packetToWrite.flip();
-                        //TODO what if it does not write?
-                        int written = _acceptChannel.send(packetToWrite, peer);
-                        packetToWrite.clear();
-                        if (newQuicConnection != null)
-                        {
-                            _connections.put(quicConnectionId, newQuicConnection);
-                        }
-                    }
-
-                }
-
-            }
-        }
-        catch (IOException e)
-        {
-            e.printStackTrace();
-        }
-        finally
-        {
-            getByteBufferPool().release(packetRead);
-        }
-
-        return null;
-    }
-
-    @Override
-    public void updateKey()
-    {
-
-    }
-
-    @Override
-    public void replaceKey(SelectionKey newKey)
-    {
-
-    }
-
-    @Override
-    protected void doStop() throws Exception
-    {
-        super.doStop();
-        for (EventListener l : getBeans(EventListener.class))
-        {
-            _manager.removeEventListener(l);
-        }
-    }
-
-    @Override
-    public boolean isOpen()
-    {
-        DatagramChannel channel = _acceptChannel;
-        return channel != null && channel.isOpen();
+        this.quicConfig = quicConfig;
     }
 
     @Override
     public void open() throws IOException
     {
-        if (_acceptChannel == null)
+        if (quicConfig == null)
+            throw new IllegalStateException("QUIC config cannot be null");
+
+        this.selector = Selector.open();
+        this.channel = DatagramChannel.open();
+        this.channel.configureBlocking(false);
+        this.channel.register(selector, SelectionKey.OP_READ);
+        this.channel.bind(bindAddress());
+        getScheduler().schedule(this::fireTimeoutNotificationIfNeeded, 100, TimeUnit.MILLISECONDS);
+
+        getExecutor().execute(() ->
         {
-            _acceptChannel = openAcceptChannel();
-            _localPort = _acceptChannel.socket().getLocalPort();
-            if (_localPort <= 0)
-                throw new IOException("Server channel not bound");
-            addBean(_acceptChannel);
+            while (true)
+            {
+                try
+                {
+                    selectOnce();
+                }
+                catch (IOException e)
+                {
+                    LOG.error("error during selection", e);
+                }
+            }
+        });
+    }
+
+    private void fireTimeoutNotificationIfNeeded()
+    {
+        boolean timedOut = endpoints.values().stream().map(QuicEndPoint::hasTimedOut).findFirst().orElse(false);
+        if (timedOut)
+            selector.wakeup();
+        getScheduler().schedule(this::fireTimeoutNotificationIfNeeded, 100, TimeUnit.MILLISECONDS);
+    }
+
+    private void selectOnce() throws IOException
+    {
+        int selected = selector.select();
+        if (Thread.interrupted())
+            throw new IOException("Selector thread was interrupted");
+
+        if (selected == 0)
+        {
+            LOG.debug("no selected key; a QUIC connection has timed out");
+            processTimeout();
+            return;
+        }
+
+        Iterator<SelectionKey> selectorIt = selector.selectedKeys().iterator();
+        while (selectorIt.hasNext())
+        {
+            SelectionKey key = selectorIt.next();
+            selectorIt.remove();
+            LOG.debug("Processing selected key {}", key);
+            boolean needWrite = false;
+
+            if (key.isReadable())
+            {
+                needWrite |= processReadableKey();
+            }
+
+            if (key.isWritable())
+            {
+                needWrite |= processWritableKey();
+            }
+
+            int ops = SelectionKey.OP_READ | (needWrite ? SelectionKey.OP_WRITE : 0);
+            LOG.debug("setting key interest to " + ops);
+            key.interestOps(ops);
         }
     }
 
-    protected DatagramChannel openAcceptChannel() throws IOException
+    private void processTimeout() throws IOException
     {
-        InetSocketAddress bindAddress = getHost() == null ? new InetSocketAddress(getPort()) : new InetSocketAddress(getHost(), getPort());
-        DatagramChannel channel = DatagramChannel.open();
-        try
+        boolean needWrite = false;
+        Iterator<QuicEndPoint> it = endpoints.values().iterator();
+        while (it.hasNext())
         {
-            channel.socket().setReuseAddress(_reuseAddress);
-            channel.socket().bind(bindAddress);
-//            channel.configureBlocking(true);
+            QuicEndPoint quicEndPoint = it.next();
+            if (quicEndPoint.hasTimedOut())
+            {
+                LOG.debug("connection has timed out: " + quicEndPoint);
+                boolean closed = quicEndPoint.getQuicConnection().isConnectionClosed();
+                if (closed)
+                {
+                    it.remove();
+                    LOG.debug("connection closed due to timeout; remaining connections: " + endpoints);
+                }
+                QuicTimeoutCommand quicTimeoutCommand = new QuicTimeoutCommand(getByteBufferPool(), quicEndPoint.getQuicConnection(), channel, quicEndPoint.getLastPeer(), quicEndPoint.getTimeoutSetter(), closed);
+                if (!quicTimeoutCommand.execute())
+                {
+                    commands.offer(quicTimeoutCommand);
+                    needWrite = true;
+                }
+            }
         }
-        catch (Throwable e)
+        //TODO: re-registering might leak some memory, check that
+        channel.register(selector, SelectionKey.OP_READ | (needWrite ? SelectionKey.OP_WRITE : 0));
+    }
+
+    private boolean processWritableKey() throws IOException
+    {
+        boolean needWrite = false;
+        LOG.debug("key is writable, commands = " + commands);
+        while (!commands.isEmpty())
         {
-            IO.close(channel);
-            throw new IOException("Failed to bind to " + bindAddress, e);
+            Command command = commands.poll();
+            LOG.debug("executing command " + command);
+            boolean finished = command.execute();
+            LOG.debug("executed command; finished? " + finished);
+            if (!finished)
+            {
+                commands.offer(command);
+                needWrite = true;
+                break;
+            }
         }
-        return channel;
+        return needWrite;
+    }
+
+    private boolean processReadableKey() throws IOException
+    {
+        boolean needWrite = false;
+        ByteBufferPool bufferPool = getByteBufferPool();
+
+        ByteBuffer buffer = bufferPool.acquire(LibQuiche.QUICHE_MIN_CLIENT_INITIAL_LEN, true);
+        SocketAddress peer = channel.receive(buffer);
+        buffer.flip();
+
+        QuicConnectionId connectionId = QuicConnectionId.fromPacket(buffer);
+        QuicEndPoint endPoint = endpoints.get(connectionId);
+        if (endPoint == null)
+        {
+            LOG.debug("got packet for a new connection");
+            // new connection
+            ByteBuffer newConnectionNegotiationToSend = bufferPool.acquire(LibQuiche.QUICHE_MIN_CLIENT_INITIAL_LEN, true);
+            QuicConnection acceptedQuicConnection = QuicConnection.tryAccept(quicConfig, peer, buffer, newConnectionNegotiationToSend);
+            if (acceptedQuicConnection == null)
+            {
+                LOG.debug("new connection negotiation");
+                ChannelWriteCommand channelWriteCommand = new ChannelWriteCommand(bufferPool, newConnectionNegotiationToSend, channel, peer);
+                if (!channelWriteCommand.execute())
+                {
+                    commands.offer(channelWriteCommand);
+                    needWrite = true;
+                }
+            }
+            else
+            {
+                LOG.debug("new connection accepted");
+                endPoint = new QuicEndPoint(getScheduler(), acceptedQuicConnection);
+                endpoints.put(connectionId, endPoint);
+                QuicWriteCommand quicWriteCommand = new QuicWriteCommand(bufferPool, acceptedQuicConnection, channel, peer, endPoint.getTimeoutSetter());
+                if (!quicWriteCommand.execute())
+                {
+                    commands.offer(quicWriteCommand);
+                    needWrite = true;
+                }
+            }
+        }
+        else
+        {
+            LOG.debug("got packet for an existing connection: " + connectionId + " - buffer: p=" + buffer.position() + " r=" + buffer.remaining());
+            // existing connection
+            endPoint.handlePacket(buffer, peer);
+            QuicWriteCommand quicWriteCommand = new QuicWriteCommand(bufferPool, endPoint.getQuicConnection(), channel, peer, endPoint.getTimeoutSetter());
+            if (!quicWriteCommand.execute())
+            {
+                commands.offer(quicWriteCommand);
+                needWrite = true;
+            }
+        }
+        return needWrite;
     }
 
     @Override
     public void close()
     {
-        super.close();
+        IO.close(channel);
+        channel = null;
+        IO.close(selector);
+        selector = null;
+    }
 
-        DatagramChannel serverChannel = _acceptChannel;
-        _acceptChannel = null;
-        if (serverChannel != null)
+    private SocketAddress bindAddress()
+    {
+        String host = getHost();
+        if (host == null)
+            host = "0.0.0.0";
+        int port = getPort();
+        if (port < 0)
+            throw new IllegalArgumentException("port cannot be negative: " + port);
+        return new InetSocketAddress(host, port);
+    }
+
+    @Override
+    public Object getTransport()
+    {
+        return channel;
+    }
+
+    @Override
+    public boolean isOpen()
+    {
+        DatagramChannel channel = this.channel;
+        return channel != null && channel.isOpen();
+    }
+
+    @Override
+    protected void accept(int acceptorID)
+    {
+        throw new UnsupportedOperationException(getClass().getSimpleName() + " has its own accepting mechanism");
+    }
+
+
+
+    private interface Command
+    {
+        boolean execute() throws IOException;
+    }
+
+    private static class QuicTimeoutCommand implements Command
+    {
+        private final QuicWriteCommand quicWriteCommand;
+        private final boolean close;
+        private boolean timeoutCalled;
+
+        public QuicTimeoutCommand(ByteBufferPool bufferPool, QuicConnection quicConnection, DatagramChannel channel, SocketAddress lastPeer, LongConsumer timeoutSetter, boolean close)
         {
-            removeBean(serverChannel);
+            this.close = close;
+            this.quicWriteCommand = new QuicWriteCommand("timeout", bufferPool, quicConnection, channel, lastPeer, timeoutSetter);
+        }
 
-            if (serverChannel.isOpen())
+        @Override
+        public boolean execute() throws IOException
+        {
+            if (!timeoutCalled)
             {
-                try
+                LOG.debug("notifying quiche of timeout");
+                quicWriteCommand.quicConnection.onTimeout();
+            }
+            timeoutCalled = true;
+            boolean written = quicWriteCommand.execute();
+            if (!written)
+                return false;
+            if (close)
+                quicWriteCommand.quicConnection.close();
+            return true;
+        }
+    }
+
+    private static class QuicWriteCommand implements Command
+    {
+        private final String cmdName;
+        private final ByteBufferPool bufferPool;
+        private final QuicConnection quicConnection;
+        private final DatagramChannel channel;
+        private final SocketAddress peer;
+        private final LongConsumer timeoutConsumer;
+
+        private ByteBuffer buffer;
+
+        public QuicWriteCommand(ByteBufferPool bufferPool, QuicConnection quicConnection, DatagramChannel channel, SocketAddress peer, LongConsumer timeoutConsumer)
+        {
+            this("write", bufferPool, quicConnection, channel, peer, timeoutConsumer);
+        }
+
+        public QuicWriteCommand(String cmdName, ByteBufferPool bufferPool, QuicConnection quicConnection, DatagramChannel channel, SocketAddress peer, LongConsumer timeoutConsumer)
+        {
+            this.cmdName = cmdName;
+            this.bufferPool = bufferPool;
+            this.quicConnection = quicConnection;
+            this.channel = channel;
+            this.peer = peer;
+            this.timeoutConsumer = timeoutConsumer;
+        }
+
+        @Override
+        public boolean execute() throws IOException
+        {
+            LOG.debug("executing {} command", cmdName);
+            if (buffer != null)
+            {
+                int channelSent = channel.send(buffer, peer);
+                LOG.debug("resuming sending to channel made it send {} bytes", channelSent);
+                if (channelSent == 0)
                 {
-                    serverChannel.close();
+                    LOG.debug("executed {} command; channel sending(1) could not be done", cmdName);
+                    return false;
                 }
-                catch (IOException e)
+                buffer.clear();
+            }
+            else
+            {
+                LOG.debug("fresh command execution");
+                buffer = bufferPool.acquire(LibQuiche.QUICHE_MIN_CLIENT_INITIAL_LEN, true);
+            }
+
+            while (true)
+            {
+                int quicSent = quicConnection.send(buffer);
+                LOG.debug("quiche wants to send {} bytes", quicSent);
+                timeoutConsumer.accept(quicConnection.nextTimeout());
+                if (quicSent == 0)
                 {
-                    LOG.warn("Unable to close {}", serverChannel, e);
+                    LOG.debug("executed {} command; all done", cmdName);
+                    bufferPool.release(buffer);
+                    buffer = null;
+                    return true;
                 }
+                buffer.flip();
+                int channelSent = channel.send(buffer, peer);
+                LOG.debug("channel sent {} bytes", channelSent);
+                if (channelSent == 0)
+                {
+                    LOG.debug("executed {} command; channel sending(2) could not be done", cmdName);
+                    return false;
+                }
+                buffer.clear();
             }
         }
-        _localPort = -2;
     }
 
-    @Override
-    protected void accept(int acceptorID) throws IOException
+    private static class ChannelWriteCommand implements Command
     {
-        DatagramChannel channel = _acceptChannel;
-        if (channel != null && channel.isOpen())
+        private final ByteBufferPool bufferPool;
+        private final ByteBuffer buffer;
+        private final DatagramChannel channel;
+        private final SocketAddress peer;
+
+        private ChannelWriteCommand(ByteBufferPool bufferPool, ByteBuffer buffer, DatagramChannel channel, SocketAddress peer)
         {
-            //TODO implement QUIC accept
-            accepted(channel);
-        }
-    }
-
-    private void accepted(DatagramChannel channel) throws IOException
-    {
-        channel.configureBlocking(false);
-        _manager.accept(channel);
-    }
-
-    QuicEndPoint newEndPoint(DatagramChannel channel, ManagedSelector selectSet, SelectionKey key) throws IOException
-    {
-        return new QuicEndPoint(channel, selectSet, key, getScheduler());
-    }
-
-    /**
-     * @return whether the server socket reuses addresses
-     * @see ServerSocket#getReuseAddress()
-     */
-    @ManagedAttribute("Server Socket SO_REUSEADDR")
-    public boolean getReuseAddress()
-    {
-        return _reuseAddress;
-    }
-
-    @Override
-    @ManagedAttribute("local port")
-    public int getLocalPort()
-    {
-        return _localPort;
-    }
-
-    protected class QuicConnectorManager extends SelectorManager
-    {
-        protected QuicConnectorManager(Executor executor, Scheduler scheduler, int selectors)
-        {
-            super(executor, scheduler, selectors);
+            this.bufferPool = bufferPool;
+            this.buffer = buffer;
+            this.channel = channel;
+            this.peer = peer;
         }
 
         @Override
-        protected void accepted(SelectableChannel channel) throws IOException
+        public boolean execute() throws IOException
         {
-            QuicConnector.this.accepted((DatagramChannel)channel);
-        }
-
-        @Override
-        protected QuicEndPoint newEndPoint(SelectableChannel channel, ManagedSelector selector, SelectionKey selectionKey) throws IOException
-        {
-            return QuicConnector.this.newEndPoint((DatagramChannel)channel, selector, selectionKey);
-        }
-
-        @Override
-        public Connection newConnection(SelectableChannel channel, EndPoint endpoint, Object attachment) throws IOException
-        {
-            return getDefaultConnectionFactory().newConnection(QuicConnector.this, endpoint);
-        }
-
-        @Override
-        protected void endPointOpened(EndPoint endpoint)
-        {
-            super.endPointOpened(endpoint);
-            onEndPointOpened(endpoint);
-        }
-
-        @Override
-        protected void endPointClosed(EndPoint endpoint)
-        {
-            onEndPointClosed(endpoint);
-            super.endPointClosed(endpoint);
-        }
-
-        @Override
-        public String toString()
-        {
-            return String.format("SelectorManager@%s", QuicConnector.this);
+            LOG.debug("executing channel write command");
+            int sent = channel.send(buffer, peer);
+            if (sent == 0)
+            {
+                LOG.debug("executed channel write command; channel sending could not be done");
+                return false;
+            }
+            bufferPool.release(buffer);
+            LOG.debug("executed channel write command; all done");
+            return true;
         }
     }
 
