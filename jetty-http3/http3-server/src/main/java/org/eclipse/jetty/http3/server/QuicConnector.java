@@ -19,9 +19,11 @@ import org.eclipse.jetty.http3.quic.QuicConfig;
 import org.eclipse.jetty.http3.quic.QuicConnection;
 import org.eclipse.jetty.http3.quic.QuicConnectionId;
 import org.eclipse.jetty.http3.quic.quiche.LibQuiche;
+import org.eclipse.jetty.io.AbstractEndPoint;
 import org.eclipse.jetty.io.ByteBufferPool;
 import org.eclipse.jetty.server.AbstractNetworkConnector;
 import org.eclipse.jetty.server.Server;
+import org.eclipse.jetty.util.BufferUtil;
 import org.eclipse.jetty.util.IO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,64 +38,99 @@ public class QuicConnector extends AbstractNetworkConnector
 
     private final Map<QuicConnectionId, QuicEndPoint> endpoints = new ConcurrentHashMap<>();
     private final Deque<Command> commands = new ArrayDeque<>();
+    private final Runnable selection = () ->
+    {
+        String oldName = Thread.currentThread().getName();
+        Thread.currentThread().setName("jetty-quic-acceptor");
+        while (true)
+        {
+            try
+            {
+                selectOnce();
+            }
+            catch (IOException e)
+            {
+                LOG.error("error during selection", e);
+            }
+            catch (InterruptedException e)
+            {
+                LOG.debug("interruption during selection", e);
+                break;
+            }
+        }
+        Thread.currentThread().setName(oldName);
+    };
 
-    public QuicConnector(Server server) throws IOException
+    public QuicConnector(Server server)
     {
         super(server, null, null, null, 0);
     }
 
-    public QuicConfig getQuicConfig()
+    @Override
+    protected void doStart() throws Exception
     {
-        return quicConfig;
-    }
-
-    public void setQuicConfig(QuicConfig quicConfig)
-    {
-        this.quicConfig = quicConfig;
+        super.doStart();
+        getScheduler().schedule(this::fireTimeoutNotificationIfNeeded, 100, TimeUnit.MILLISECONDS);
+        getExecutor().execute(selection);
     }
 
     @Override
     public void open() throws IOException
     {
-        if (quicConfig == null)
-            throw new IllegalStateException("QUIC config cannot be null");
+        if (selector != null)
+            return;
+
+        quicConfig = new QuicConfig();
+        quicConfig.setMaxIdleTimeout(5000L);
+        quicConfig.setInitialMaxData(10000000L);
+        quicConfig.setInitialMaxStreamDataBidiLocal(10000000L);
+        quicConfig.setInitialMaxStreamDataBidiRemote(10000000L);
+        quicConfig.setInitialMaxStreamDataUni(10000000L);
+        quicConfig.setInitialMaxStreamsBidi(100L);
+        quicConfig.setCongestionControl(QuicConfig.CongestionControl.RENO);
+        quicConfig.setCertChainPemPath("./src/test/resources/cert.crt");
+        quicConfig.setPrivKeyPemPath("./src/test/resources/cert.key");
+        quicConfig.setVerifyPeer(false);
+        quicConfig.setApplicationProtos(getProtocols().toArray(new String[0]));
 
         this.selector = Selector.open();
         this.channel = DatagramChannel.open();
         this.channel.configureBlocking(false);
         this.channel.register(selector, SelectionKey.OP_READ);
         this.channel.bind(bindAddress());
-        getScheduler().schedule(this::fireTimeoutNotificationIfNeeded, 100, TimeUnit.MILLISECONDS);
+    }
 
-        getExecutor().execute(() ->
-        {
-            while (true)
-            {
-                try
-                {
-                    selectOnce();
-                }
-                catch (IOException e)
-                {
-                    LOG.error("error during selection", e);
-                }
-            }
-        });
+    @Override
+    public void close()
+    {
+        if (selector == null)
+            return;
+
+        endpoints.values().forEach(AbstractEndPoint::close);
+        endpoints.clear();
+        IO.close(channel);
+        channel = null;
+        IO.close(selector);
+        selector = null;
+        quicConfig = null;
     }
 
     private void fireTimeoutNotificationIfNeeded()
     {
         boolean timedOut = endpoints.values().stream().map(QuicEndPoint::hasTimedOut).findFirst().orElse(false);
         if (timedOut)
+        {
+            LOG.debug("connection timed out, waking up selector");
             selector.wakeup();
+        }
         getScheduler().schedule(this::fireTimeoutNotificationIfNeeded, 100, TimeUnit.MILLISECONDS);
     }
 
-    private void selectOnce() throws IOException
+    private void selectOnce() throws IOException, InterruptedException
     {
         int selected = selector.select();
         if (Thread.interrupted())
-            throw new IOException("Selector thread was interrupted");
+            throw new InterruptedException("Selector thread was interrupted");
 
         if (selected == 0)
         {
@@ -180,6 +217,7 @@ public class QuicConnector extends AbstractNetworkConnector
         ByteBufferPool bufferPool = getByteBufferPool();
 
         ByteBuffer buffer = bufferPool.acquire(LibQuiche.QUICHE_MIN_CLIENT_INITIAL_LEN, true);
+        BufferUtil.flipToFill(buffer);
         SocketAddress peer = channel.receive(buffer);
         buffer.flip();
 
@@ -190,6 +228,7 @@ public class QuicConnector extends AbstractNetworkConnector
             LOG.debug("got packet for a new connection");
             // new connection
             ByteBuffer newConnectionNegotiationToSend = bufferPool.acquire(LibQuiche.QUICHE_MIN_CLIENT_INITIAL_LEN, true);
+            BufferUtil.flipToFill(newConnectionNegotiationToSend);
             QuicConnection acceptedQuicConnection = QuicConnection.tryAccept(quicConfig, peer, buffer, newConnectionNegotiationToSend);
             if (acceptedQuicConnection == null)
             {
@@ -204,7 +243,7 @@ public class QuicConnector extends AbstractNetworkConnector
             else
             {
                 LOG.debug("new connection accepted");
-                endPoint = new QuicEndPoint(getScheduler(), acceptedQuicConnection);
+                endPoint = new QuicEndPoint(getScheduler(), acceptedQuicConnection, channel.getLocalAddress());
                 endpoints.put(connectionId, endPoint);
                 QuicWriteCommand quicWriteCommand = new QuicWriteCommand(bufferPool, acceptedQuicConnection, channel, peer, endPoint.getTimeoutSetter());
                 if (!quicWriteCommand.execute())
@@ -227,15 +266,6 @@ public class QuicConnector extends AbstractNetworkConnector
             }
         }
         return needWrite;
-    }
-
-    @Override
-    public void close()
-    {
-        IO.close(channel);
-        channel = null;
-        IO.close(selector);
-        selector = null;
     }
 
     private SocketAddress bindAddress()
@@ -300,7 +330,10 @@ public class QuicConnector extends AbstractNetworkConnector
             if (!written)
                 return false;
             if (close)
+            {
+                LOG.debug("closing quiche connection");
                 quicWriteCommand.quicConnection.close();
+            }
             return true;
         }
     }
@@ -350,6 +383,7 @@ public class QuicConnector extends AbstractNetworkConnector
             {
                 LOG.debug("fresh command execution");
                 buffer = bufferPool.acquire(LibQuiche.QUICHE_MIN_CLIENT_INITIAL_LEN, true);
+                BufferUtil.flipToFill(buffer);
             }
 
             while (true)

@@ -1,6 +1,7 @@
 package org.eclipse.jetty.http3.server;
 
 import org.eclipse.jetty.server.Connector;
+import org.eclipse.jetty.server.HttpConnectionFactory;
 import org.eclipse.jetty.server.Server;
 import org.junit.jupiter.api.Test;
 
@@ -13,6 +14,8 @@ public class End2EndTest
         QuicConnector quicConnector = new QuicConnector(server);
         quicConnector.setPort(8443);
         server.setConnectors(new Connector[]{quicConnector});
+
+        quicConnector.addConnectionFactory(new HttpConnectionFactory());
 
         server.start();
 

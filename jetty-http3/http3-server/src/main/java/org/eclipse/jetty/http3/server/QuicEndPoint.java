@@ -1,13 +1,16 @@
 package org.eclipse.jetty.http3.server;
 
+import java.io.Closeable;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.nio.ByteBuffer;
+import java.util.Iterator;
 import java.util.concurrent.TimeUnit;
 import java.util.function.LongConsumer;
 
 import org.eclipse.jetty.http3.quic.QuicConnection;
+import org.eclipse.jetty.http3.quic.QuicStream;
 import org.eclipse.jetty.io.AbstractEndPoint;
 import org.eclipse.jetty.util.thread.Scheduler;
 import org.slf4j.Logger;
@@ -18,6 +21,7 @@ public class QuicEndPoint extends AbstractEndPoint
     protected static final Logger LOG = LoggerFactory.getLogger(QuicEndPoint.class);
 
     private final QuicConnection quicConnection;
+    private final SocketAddress localAddress;
     private volatile long registrationTsInNs;
     private volatile long timeoutInNs;
     private volatile SocketAddress lastPeer;
@@ -29,10 +33,11 @@ public class QuicEndPoint extends AbstractEndPoint
         LOG.debug("next timeout is in {}ms", timeoutInMs);
     };
 
-    protected QuicEndPoint(Scheduler scheduler, QuicConnection quicConnection)
+    protected QuicEndPoint(Scheduler scheduler, QuicConnection quicConnection, SocketAddress localAddress)
     {
         super(scheduler);
         this.quicConnection = quicConnection;
+        this.localAddress = localAddress;
     }
 
     public SocketAddress getLastPeer()
@@ -49,10 +54,10 @@ public class QuicEndPoint extends AbstractEndPoint
      * @param buffer cipher text
      * @param peer address of the peer who sent the packet
      */
-    public void handlePacket(ByteBuffer buffer, SocketAddress peer)
+    public void handlePacket(ByteBuffer buffer, SocketAddress peer) throws IOException
     {
         lastPeer = peer;
-
+        quicConnection.recv(buffer);
     }
 
     public QuicConnection getQuicConnection()
@@ -68,18 +73,32 @@ public class QuicEndPoint extends AbstractEndPoint
     @Override
     public InetSocketAddress getLocalAddress()
     {
-        return null;
+        return (InetSocketAddress)localAddress;
     }
 
     @Override
     public InetSocketAddress getRemoteAddress()
     {
-        return null;
+        return (InetSocketAddress)lastPeer;
     }
 
     @Override
     public int fill(ByteBuffer buffer) throws IOException
     {
+        if (quicConnection.isConnectionClosed())
+            return -1;
+
+        Iterator<QuicStream> it = quicConnection.readableStreamsIterator();
+        if (it.hasNext())
+        {
+            QuicStream stream = it.next();
+            int remaining = buffer.remaining();
+            byte[] buf = new byte[remaining];
+            int read = stream.read(buf);
+            buffer.put(buf, 0, read);
+            ((Closeable)stream).close();
+            return read;
+        }
         return 0;
     }
 
@@ -92,7 +111,7 @@ public class QuicEndPoint extends AbstractEndPoint
     @Override
     public Object getTransport()
     {
-        return null;
+        return quicConnection;
     }
 
     @Override
