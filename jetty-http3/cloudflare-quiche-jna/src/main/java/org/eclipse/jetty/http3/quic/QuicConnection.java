@@ -7,9 +7,10 @@ import java.net.SocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Iterator;
-import java.util.NoSuchElementException;
+import java.util.List;
 
 import org.eclipse.jetty.http3.quic.quiche.LibQuiche;
 import org.eclipse.jetty.http3.quic.quiche.size_t;
@@ -319,67 +320,49 @@ public class QuicConnection implements Closeable
         return new StreamIterator(quicheConn, true);
     }
 
-    static class StreamIterator implements Iterator<QuicStream>, Closeable
+    static class StreamIterator implements Iterator<QuicStream>
     {
         private static final Logger LOGGER = LoggerFactory.getLogger(StreamIterator.class);
 
         private final LibQuiche.quiche_conn quicheConn;
-        private LibQuiche.quiche_stream_iter quiche_stream_iter;
-        private boolean hasNext;
-        private long nextStreamId;
+        private final Iterator<Long> streamIdIterator;
 
         public StreamIterator(LibQuiche.quiche_conn quicheConn, boolean write)
         {
+            this.quicheConn = quicheConn;
+            this.streamIdIterator = iterableStreamIds(write).iterator();
+            LOGGER.debug("Created {} stream iterator", (write ? "write" : "read"));
+        }
+
+        private List<Long> iterableStreamIds(boolean write)
+        {
+            LibQuiche.quiche_stream_iter quiche_stream_iter;
             if (write)
                 quiche_stream_iter = INSTANCE.quiche_conn_writable(quicheConn);
             else
                 quiche_stream_iter = INSTANCE.quiche_conn_readable(quicheConn);
-            this.quicheConn = quicheConn;
-            LOGGER.debug("Created {} stream iterator", (write ? "write" : "read"));
-            iterNext();
-        }
 
-        private void iterNext()
-        {
+            List<Long> result = new ArrayList<>();
             uint64_t_pointer streamId = new uint64_t_pointer();
-            hasNext = INSTANCE.quiche_stream_iter_next(quiche_stream_iter, streamId);
-            if (!hasNext)
+            while (INSTANCE.quiche_stream_iter_next(quiche_stream_iter, streamId))
             {
-                LOGGER.debug("No next iterable stream");
-                close();
+                result.add(streamId.getValue());
             }
-            else
-            {
-                nextStreamId = streamId.getValue();
-                LOGGER.debug("Next iterable stream ID={}", nextStreamId);
-            }
-        }
-
-        @Override
-        public void close()
-        {
-            if (quiche_stream_iter != null)
-            {
-                INSTANCE.quiche_stream_iter_free(quiche_stream_iter);
-                quiche_stream_iter = null;
-                LOGGER.debug("Freed stream iterator");
-            }
+            INSTANCE.quiche_stream_iter_free(quiche_stream_iter);
+            return result;
         }
 
         @Override
         public boolean hasNext()
         {
-            return hasNext;
+            return streamIdIterator.hasNext();
         }
 
         @Override
         public QuicStream next()
         {
-            if (!hasNext)
-                throw new NoSuchElementException();
-            QuicStream stream = new QuicStream(this, quicheConn, nextStreamId);
-            iterNext();
-            return stream;
+            Long streamId = streamIdIterator.next();
+            return new QuicStream(quicheConn, streamId);
         }
     }
 
@@ -472,6 +455,7 @@ public class QuicConnection implements Closeable
             INSTANCE.quiche_config_free(quicheConfig);
             quicheConfig = null;
         }
+        quicConnectionId = null;
     }
 
     public void sendClose() throws IOException

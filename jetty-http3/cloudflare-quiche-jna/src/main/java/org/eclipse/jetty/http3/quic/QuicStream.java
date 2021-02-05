@@ -16,14 +16,12 @@ public class QuicStream
 {
     private static final Logger LOGGER = LoggerFactory.getLogger(QuicStream.class);
 
-    private final QuicConnection.StreamIterator streamIterator;
     private final LibQuiche.quiche_conn quicheConn;
     private final long streamId;
     private boolean receivedFin;
 
-    QuicStream(QuicConnection.StreamIterator streamIterator, LibQuiche.quiche_conn quicheConn, long streamId)
+    QuicStream(LibQuiche.quiche_conn quicheConn, long streamId)
     {
-        this.streamIterator = streamIterator;
         this.quicheConn = quicheConn;
         this.streamId = streamId;
     }
@@ -36,27 +34,25 @@ public class QuicStream
     public int read(byte[] buffer) throws IOException
     {
         bool_pointer fin = new bool_pointer();
-        ssize_t recv = INSTANCE.quiche_conn_stream_recv(quicheConn, new uint64_t(streamId), buffer, new size_t(buffer.length), fin);
-        LOGGER.debug("Received {} byte(s) from stream {} (fin? {})", recv.intValue(), streamId, fin.getValue());
+        int recv = INSTANCE.quiche_conn_stream_recv(quicheConn, new uint64_t(streamId), buffer, new size_t(buffer.length), fin).intValue();
+        LOGGER.debug("Received {} byte(s) from stream {} (fin? {})", recv, streamId, fin.getValue());
         receivedFin |= fin.getValue();
-        if (recv.intValue() < 0)
-        {
-            streamIterator.close();
+        if (recv == LibQuiche.quiche_error.QUICHE_ERR_DONE)
             return 0;
-        }
-        return recv.intValue();
+        if (recv < 0)
+            throw new IOException("Error reading from stream " + streamId + ": " + LibQuiche.quiche_error.errToString(recv));
+        return recv;
     }
 
     public int write(byte[] buffer, boolean fin) throws IOException
     {
-        ssize_t sent = INSTANCE.quiche_conn_stream_send(quicheConn, new uint64_t(streamId), buffer, new size_t(buffer.length), fin);
-        LOGGER.debug("Sent {} byte(s) to stream {} (fin? {})", sent.intValue(), streamId, fin);
-        if (sent.intValue() < 0)
-        {
-            streamIterator.close();
+        int sent = INSTANCE.quiche_conn_stream_send(quicheConn, new uint64_t(streamId), buffer, new size_t(buffer.length), fin).intValue();
+        LOGGER.debug("Sent {} byte(s) to stream {} (fin? {})", sent, streamId, fin);
+        if (sent == LibQuiche.quiche_error.QUICHE_ERR_DONE)
             return 0;
-        }
-        return sent.intValue();
+        if (sent < 0)
+            throw new IOException("Error writing to stream " + streamId + ": " + LibQuiche.quiche_error.errToString(sent));
+        return sent;
     }
 
     public boolean isReceivedFin()

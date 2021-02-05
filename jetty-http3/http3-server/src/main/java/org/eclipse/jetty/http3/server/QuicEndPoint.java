@@ -1,6 +1,5 @@
 package org.eclipse.jetty.http3.server;
 
-import java.io.Closeable;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
@@ -80,7 +79,6 @@ public class QuicEndPoint extends AbstractEndPoint
                     getFillInterest().fillable();
                 }
             }
-            ((Closeable)it).close();
         }
     }
 
@@ -124,7 +122,6 @@ public class QuicEndPoint extends AbstractEndPoint
             read = stream.read(buf);
             buffer.put(buf, 0, read);
         }
-        ((Closeable)it).close();
         BufferUtil.flipToFlush(buffer, pos);
         return read;
     }
@@ -137,46 +134,39 @@ public class QuicEndPoint extends AbstractEndPoint
             return false;
 
         Iterator<QuicStream> it = quicConnection.writableStreamsIterator();
-        try
+        if (it.hasNext())
         {
-            if (it.hasNext())
+            QuicStream stream = it.next();
+
+            long flushed = 0L;
+            try
             {
-                QuicStream stream = it.next();
-
-                long flushed = 0L;
-                try
+                for (ByteBuffer buffer : buffers)
                 {
-                    for (ByteBuffer buffer : buffers)
-                    {
-                        flushed += writeToStream(stream, buffer);
-                    }
-                    if (LOG.isDebugEnabled())
-                        LOG.debug("flushed {} {}", flushed, this);
+                    flushed += writeToStream(stream, buffer);
                 }
-                catch (IOException e)
-                {
-                    throw new EofException(e);
-                }
-
-                if (flushed > 0)
-                    notIdle();
-
-                for (ByteBuffer b : buffers)
-                {
-                    if (!BufferUtil.isEmpty(b))
-                        return false;
-                }
-
-                return true;
+                if (LOG.isDebugEnabled())
+                    LOG.debug("flushed {} {}", flushed, this);
             }
-            else
+            catch (IOException e)
             {
-                return false;
+                throw new EofException(e);
             }
+
+            if (flushed > 0)
+                notIdle();
+
+            for (ByteBuffer b : buffers)
+            {
+                if (!BufferUtil.isEmpty(b))
+                    return false;
+            }
+
+            return true;
         }
-        finally
+        else
         {
-            ((Closeable)it).close();
+            return false;
         }
     }
 
