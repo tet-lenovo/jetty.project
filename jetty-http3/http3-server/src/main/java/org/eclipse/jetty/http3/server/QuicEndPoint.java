@@ -14,6 +14,7 @@ import org.eclipse.jetty.http3.quic.QuicConnection;
 import org.eclipse.jetty.http3.quic.QuicStream;
 import org.eclipse.jetty.io.AbstractEndPoint;
 import org.eclipse.jetty.io.ByteBufferPool;
+import org.eclipse.jetty.io.EofException;
 import org.eclipse.jetty.util.BufferUtil;
 import org.eclipse.jetty.util.thread.Scheduler;
 import org.slf4j.Logger;
@@ -62,7 +63,7 @@ public class QuicEndPoint extends AbstractEndPoint
      */
     public void handlePacket(ByteBuffer buffer, SocketAddress peer) throws IOException
     {
-        System.out.println("handling packet " + BufferUtil.toDetailString(buffer));
+        LOG.debug("handling packet " + BufferUtil.toDetailString(buffer));
         lastPeer = peer;
         quicConnection.recv(buffer);
         bufferPool.release(buffer);
@@ -72,10 +73,10 @@ public class QuicEndPoint extends AbstractEndPoint
             Iterator<QuicStream> it = quicConnection.readableStreamsIterator();
             if (it.hasNext())
             {
-                System.out.println("a stream is readable");
+                LOG.debug("a stream is readable");
                 if (fillInterested.compareAndSet(true, false))
                 {
-                    System.out.println("Fillable");
+                    LOG.debug("Fillable");
                     getFillInterest().fillable();
                 }
             }
@@ -108,7 +109,7 @@ public class QuicEndPoint extends AbstractEndPoint
     @Override
     public int fill(ByteBuffer buffer) throws IOException
     {
-        System.out.println("fill");
+        LOG.debug("fill");
         if (quicConnection.isConnectionClosed())
             return -1;
 
@@ -131,21 +132,62 @@ public class QuicEndPoint extends AbstractEndPoint
     @Override
     public boolean flush(ByteBuffer... buffers) throws IOException
     {
-        System.out.println("flush");
-        boolean written = false;
+        LOG.debug("flush");
+        if (quicConnection.isConnectionClosed())
+            return false;
+
         Iterator<QuicStream> it = quicConnection.writableStreamsIterator();
-        if (it.hasNext())
+        try
         {
-            QuicStream stream = it.next();
-            for (ByteBuffer buffer : buffers)
+            if (it.hasNext())
             {
-                byte[] buf = new byte[buffer.remaining()];
-                buffer.get(buf);
-                stream.write(buf, false);
-                written = true;
+                QuicStream stream = it.next();
+
+                long flushed = 0L;
+                try
+                {
+                    for (ByteBuffer buffer : buffers)
+                    {
+                        flushed += writeToStream(stream, buffer);
+                    }
+                    if (LOG.isDebugEnabled())
+                        LOG.debug("flushed {} {}", flushed, this);
+                }
+                catch (IOException e)
+                {
+                    throw new EofException(e);
+                }
+
+                if (flushed > 0)
+                    notIdle();
+
+                for (ByteBuffer b : buffers)
+                {
+                    if (!BufferUtil.isEmpty(b))
+                        return false;
+                }
+
+                return true;
+            }
+            else
+            {
+                return false;
             }
         }
-        ((Closeable)it).close();
+        finally
+        {
+            ((Closeable)it).close();
+        }
+    }
+
+    private long writeToStream(QuicStream stream, ByteBuffer buffer) throws IOException
+    {
+        byte[] buf = new byte[buffer.remaining()];
+        buffer.get(buf);
+        int written = stream.write(buf, false);
+        int remaining = buf.length - written;
+        if (remaining != 0)
+            buffer.position(buffer.position() - remaining);
         return written;
     }
 
@@ -158,13 +200,13 @@ public class QuicEndPoint extends AbstractEndPoint
     @Override
     protected void onIncompleteFlush()
     {
-        System.out.println("onIncompleteFlush");
+        LOG.debug("onIncompleteFlush");
     }
 
     @Override
     protected void needsFillInterest() throws IOException
     {
-        System.out.println("fill interested");
+        LOG.debug("fill interested");
         fillInterested.set(true);
     }
 }
