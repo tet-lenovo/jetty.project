@@ -107,7 +107,6 @@ public class QuicEndPoint extends AbstractEndPoint
     @Override
     public int fill(ByteBuffer buffer) throws IOException
     {
-        LOG.debug("fill");
         if (quicConnection.isConnectionClosed())
             return -1;
 
@@ -123,6 +122,7 @@ public class QuicEndPoint extends AbstractEndPoint
             buffer.put(buf, 0, read);
         }
         BufferUtil.flipToFlush(buffer, pos);
+        LOG.debug("filled {} bytes", read);
         return read;
     }
 
@@ -196,7 +196,7 @@ public class QuicEndPoint extends AbstractEndPoint
     @Override
     protected void needsFillInterest() throws IOException
     {
-        LOG.debug("fill interested");
+        LOG.debug("fill interested; currently interested? {}", fillInterested.get());
         fillInterested.set(true);
     }
 }
