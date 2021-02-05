@@ -21,6 +21,7 @@ import org.eclipse.jetty.http3.quic.QuicConnectionId;
 import org.eclipse.jetty.http3.quic.quiche.LibQuiche;
 import org.eclipse.jetty.io.AbstractEndPoint;
 import org.eclipse.jetty.io.ByteBufferPool;
+import org.eclipse.jetty.io.Connection;
 import org.eclipse.jetty.server.AbstractNetworkConnector;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.util.BufferUtil;
@@ -91,7 +92,8 @@ public class QuicConnector extends AbstractNetworkConnector
         quicConfig.setCertChainPemPath("./src/test/resources/cert.crt");
         quicConfig.setPrivKeyPemPath("./src/test/resources/cert.key");
         quicConfig.setVerifyPeer(false);
-        quicConfig.setApplicationProtos(getProtocols().toArray(new String[0]));
+//        quicConfig.setApplicationProtos(getProtocols().toArray(new String[0]));
+        quicConfig.setApplicationProtos("http/0.9");  // enable HTTP/0.9
 
         this.selector = Selector.open();
         this.channel = DatagramChannel.open();
@@ -176,6 +178,8 @@ public class QuicConnector extends AbstractNetworkConnector
                 boolean closed = quicEndPoint.getQuicConnection().isConnectionClosed();
                 if (closed)
                 {
+                    quicEndPoint.close();
+//                    quicEndPoint.getConnection().close();
                     it.remove();
                     LOG.debug("connection closed due to timeout; remaining connections: " + endpoints);
                 }
@@ -243,7 +247,7 @@ public class QuicConnector extends AbstractNetworkConnector
             else
             {
                 LOG.debug("new connection accepted");
-                endPoint = new QuicEndPoint(getScheduler(), acceptedQuicConnection, channel.getLocalAddress());
+                endPoint = createQuicEndPoint(bufferPool, acceptedQuicConnection);
                 endpoints.put(connectionId, endPoint);
                 QuicWriteCommand quicWriteCommand = new QuicWriteCommand(bufferPool, acceptedQuicConnection, channel, peer, endPoint.getTimeoutSetter());
                 if (!quicWriteCommand.execute())
@@ -266,6 +270,15 @@ public class QuicConnector extends AbstractNetworkConnector
             }
         }
         return needWrite;
+    }
+
+    private QuicEndPoint createQuicEndPoint(ByteBufferPool bufferPool, QuicConnection acceptedQuicConnection) throws IOException
+    {
+        QuicEndPoint endPoint = new QuicEndPoint(getScheduler(), acceptedQuicConnection, channel.getLocalAddress(), bufferPool);
+        Connection connection = getDefaultConnectionFactory().newConnection(this, endPoint);
+        endPoint.setConnection(connection);
+        connection.onOpen();
+        return endPoint;
     }
 
     private SocketAddress bindAddress()
@@ -324,8 +337,8 @@ public class QuicConnector extends AbstractNetworkConnector
             {
                 LOG.debug("notifying quiche of timeout");
                 quicWriteCommand.quicConnection.onTimeout();
+                timeoutCalled = true;
             }
-            timeoutCalled = true;
             boolean written = quicWriteCommand.execute();
             if (!written)
                 return false;
@@ -389,7 +402,6 @@ public class QuicConnector extends AbstractNetworkConnector
             while (true)
             {
                 int quicSent = quicConnection.send(buffer);
-                LOG.debug("quiche wants to send {} bytes", quicSent);
                 timeoutConsumer.accept(quicConnection.nextTimeout());
                 if (quicSent == 0)
                 {
@@ -398,6 +410,7 @@ public class QuicConnector extends AbstractNetworkConnector
                     buffer = null;
                     return true;
                 }
+                LOG.debug("quiche wants to send {} bytes", quicSent);
                 buffer.flip();
                 int channelSent = channel.send(buffer, peer);
                 LOG.debug("channel sent {} bytes", channelSent);
@@ -441,5 +454,4 @@ public class QuicConnector extends AbstractNetworkConnector
             return true;
         }
     }
-
 }
