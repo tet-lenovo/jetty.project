@@ -179,7 +179,6 @@ public class QuicConnector extends AbstractNetworkConnector
                 if (closed)
                 {
                     quicEndPoint.close();
-//                    quicEndPoint.getConnection().close();
                     it.remove();
                     LOG.debug("connection closed due to timeout; remaining connections: " + endpoints);
                 }
@@ -251,10 +250,10 @@ public class QuicConnector extends AbstractNetworkConnector
                 bufferPool.release(newConnectionNegotiationToSend);
                 endPoint = createQuicEndPoint(acceptedQuicConnection, peer);
                 endpoints.put(connectionId, endPoint);
-                QuicWriteCommand quicWriteCommand = new QuicWriteCommand(bufferPool, channel, endPoint);
-                if (!quicWriteCommand.execute())
+                QuicSendCommand quicSendCommand = new QuicSendCommand(bufferPool, channel, endPoint);
+                if (!quicSendCommand.execute())
                 {
-                    commands.offer(quicWriteCommand);
+                    commands.offer(quicSendCommand);
                     needWrite = true;
                 }
             }
@@ -264,10 +263,10 @@ public class QuicConnector extends AbstractNetworkConnector
             LOG.debug("got packet for an existing connection: " + connectionId + " - buffer: p=" + buffer.position() + " r=" + buffer.remaining());
             // existing connection
             endPoint.handlePacket(buffer, peer, bufferPool);
-            QuicWriteCommand quicWriteCommand = new QuicWriteCommand(bufferPool, channel, endPoint);
-            if (!quicWriteCommand.execute())
+            QuicSendCommand quicSendCommand = new QuicSendCommand(bufferPool, channel, endPoint);
+            if (!quicSendCommand.execute())
             {
-                commands.offer(quicWriteCommand);
+                commands.offer(quicSendCommand);
                 needWrite = true;
             }
         }
@@ -322,14 +321,14 @@ public class QuicConnector extends AbstractNetworkConnector
 
     private static class QuicTimeoutCommand implements Command
     {
-        private final QuicWriteCommand quicWriteCommand;
+        private final QuicSendCommand quicSendCommand;
         private final boolean close;
         private boolean timeoutCalled;
 
         public QuicTimeoutCommand(ByteBufferPool bufferPool, QuicEndPoint quicEndPoint, DatagramChannel channel, boolean close)
         {
             this.close = close;
-            this.quicWriteCommand = new QuicWriteCommand("timeout", bufferPool, channel, quicEndPoint);
+            this.quicSendCommand = new QuicSendCommand("timeout", bufferPool, channel, quicEndPoint);
         }
 
         @Override
@@ -338,22 +337,22 @@ public class QuicConnector extends AbstractNetworkConnector
             if (!timeoutCalled)
             {
                 LOG.debug("notifying quiche of timeout");
-                quicWriteCommand.quicConnection.onTimeout();
+                quicSendCommand.quicConnection.onTimeout();
                 timeoutCalled = true;
             }
-            boolean written = quicWriteCommand.execute();
+            boolean written = quicSendCommand.execute();
             if (!written)
                 return false;
             if (close)
             {
                 LOG.debug("closing quiche connection");
-                quicWriteCommand.quicConnection.close();
+                quicSendCommand.quicConnection.close();
             }
             return true;
         }
     }
 
-    private static class QuicWriteCommand implements Command
+    private static class QuicSendCommand implements Command
     {
         private final String cmdName;
         private final ByteBufferPool bufferPool;
@@ -364,12 +363,12 @@ public class QuicConnector extends AbstractNetworkConnector
 
         private ByteBuffer buffer;
 
-        public QuicWriteCommand(ByteBufferPool bufferPool, DatagramChannel channel, QuicEndPoint endPoint)
+        public QuicSendCommand(ByteBufferPool bufferPool, DatagramChannel channel, QuicEndPoint endPoint)
         {
-            this("write", bufferPool, channel, endPoint);
+            this("send", bufferPool, channel, endPoint);
         }
 
-        public QuicWriteCommand(String cmdName, ByteBufferPool bufferPool, DatagramChannel channel, QuicEndPoint endPoint)
+        private QuicSendCommand(String cmdName, ByteBufferPool bufferPool, DatagramChannel channel, QuicEndPoint endPoint)
         {
             this.cmdName = cmdName;
             this.bufferPool = bufferPool;
