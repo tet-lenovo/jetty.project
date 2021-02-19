@@ -234,6 +234,7 @@ public class QuicConnector extends AbstractNetworkConnector
             ByteBuffer newConnectionNegotiationToSend = bufferPool.acquire(LibQuiche.QUICHE_MIN_CLIENT_INITIAL_LEN, true);
             BufferUtil.flipToFill(newConnectionNegotiationToSend);
             QuicConnection acceptedQuicConnection = QuicConnection.tryAccept(quicConfig, peer, buffer, newConnectionNegotiationToSend);
+            bufferPool.release(buffer);
             if (acceptedQuicConnection == null)
             {
                 LOG.debug("new connection negotiation");
@@ -247,7 +248,8 @@ public class QuicConnector extends AbstractNetworkConnector
             else
             {
                 LOG.debug("new connection accepted");
-                endPoint = createQuicEndPoint(bufferPool, acceptedQuicConnection);
+                bufferPool.release(newConnectionNegotiationToSend);
+                endPoint = createQuicEndPoint(acceptedQuicConnection);
                 endpoints.put(connectionId, endPoint);
                 QuicWriteCommand quicWriteCommand = new QuicWriteCommand(bufferPool, acceptedQuicConnection, channel, peer, endPoint.getTimeoutSetter());
                 if (!quicWriteCommand.execute())
@@ -261,7 +263,7 @@ public class QuicConnector extends AbstractNetworkConnector
         {
             LOG.debug("got packet for an existing connection: " + connectionId + " - buffer: p=" + buffer.position() + " r=" + buffer.remaining());
             // existing connection
-            endPoint.handlePacket(buffer, peer);
+            endPoint.handlePacket(buffer, peer, bufferPool);
             QuicWriteCommand quicWriteCommand = new QuicWriteCommand(bufferPool, endPoint.getQuicConnection(), channel, peer, endPoint.getTimeoutSetter());
             if (!quicWriteCommand.execute())
             {
@@ -272,9 +274,9 @@ public class QuicConnector extends AbstractNetworkConnector
         return needWrite;
     }
 
-    private QuicEndPoint createQuicEndPoint(ByteBufferPool bufferPool, QuicConnection acceptedQuicConnection) throws IOException
+    private QuicEndPoint createQuicEndPoint(QuicConnection acceptedQuicConnection) throws IOException
     {
-        QuicEndPoint endPoint = new QuicEndPoint(getScheduler(), acceptedQuicConnection, channel.getLocalAddress(), bufferPool);
+        QuicEndPoint endPoint = new QuicEndPoint(getScheduler(), acceptedQuicConnection, channel.getLocalAddress());
         Connection connection = getDefaultConnectionFactory().newConnection(this, endPoint);
         endPoint.setConnection(connection);
         connection.onOpen();

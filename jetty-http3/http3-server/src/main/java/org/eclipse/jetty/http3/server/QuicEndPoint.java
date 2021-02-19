@@ -26,7 +26,6 @@ public class QuicEndPoint extends AbstractEndPoint
     private final AtomicBoolean fillInterested = new AtomicBoolean();
     private final QuicConnection quicConnection;
     private final SocketAddress localAddress;
-    private final ByteBufferPool bufferPool;
     private volatile long registrationTsInNs;
     private volatile long timeoutInNs;
     private volatile SocketAddress lastPeer;
@@ -38,12 +37,11 @@ public class QuicEndPoint extends AbstractEndPoint
         LOG.debug("next timeout is in {}ms", timeoutInMs);
     };
 
-    protected QuicEndPoint(Scheduler scheduler, QuicConnection quicConnection, SocketAddress localAddress, ByteBufferPool bufferPool)
+    protected QuicEndPoint(Scheduler scheduler, QuicConnection quicConnection, SocketAddress localAddress)
     {
         super(scheduler);
         this.quicConnection = quicConnection;
         this.localAddress = localAddress;
-        this.bufferPool = bufferPool;
     }
 
     public SocketAddress getLastPeer()
@@ -59,8 +57,9 @@ public class QuicEndPoint extends AbstractEndPoint
     /**
      * @param buffer cipher text
      * @param peer address of the peer who sent the packet
+     * @param bufferPool the pool where to release the buffer when done with it
      */
-    public void handlePacket(ByteBuffer buffer, SocketAddress peer) throws IOException
+    public void handlePacket(ByteBuffer buffer, SocketAddress peer, ByteBufferPool bufferPool) throws IOException
     {
         LOG.debug("handling packet " + BufferUtil.toDetailString(buffer));
         lastPeer = peer;
