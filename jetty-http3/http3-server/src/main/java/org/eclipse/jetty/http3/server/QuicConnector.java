@@ -183,7 +183,7 @@ public class QuicConnector extends AbstractNetworkConnector
                     it.remove();
                     LOG.debug("connection closed due to timeout; remaining connections: " + endpoints);
                 }
-                QuicTimeoutCommand quicTimeoutCommand = new QuicTimeoutCommand(getByteBufferPool(), quicEndPoint.getQuicConnection(), channel, quicEndPoint.getLastPeer(), quicEndPoint.getTimeoutSetter(), closed);
+                QuicTimeoutCommand quicTimeoutCommand = new QuicTimeoutCommand(getByteBufferPool(), quicEndPoint, channel, closed);
                 if (!quicTimeoutCommand.execute())
                 {
                     commands.offer(quicTimeoutCommand);
@@ -249,9 +249,9 @@ public class QuicConnector extends AbstractNetworkConnector
             {
                 LOG.debug("new connection accepted");
                 bufferPool.release(newConnectionNegotiationToSend);
-                endPoint = createQuicEndPoint(acceptedQuicConnection);
+                endPoint = createQuicEndPoint(acceptedQuicConnection, peer);
                 endpoints.put(connectionId, endPoint);
-                QuicWriteCommand quicWriteCommand = new QuicWriteCommand(bufferPool, acceptedQuicConnection, channel, peer, endPoint.getTimeoutSetter());
+                QuicWriteCommand quicWriteCommand = new QuicWriteCommand(bufferPool, channel, endPoint);
                 if (!quicWriteCommand.execute())
                 {
                     commands.offer(quicWriteCommand);
@@ -264,7 +264,7 @@ public class QuicConnector extends AbstractNetworkConnector
             LOG.debug("got packet for an existing connection: " + connectionId + " - buffer: p=" + buffer.position() + " r=" + buffer.remaining());
             // existing connection
             endPoint.handlePacket(buffer, peer, bufferPool);
-            QuicWriteCommand quicWriteCommand = new QuicWriteCommand(bufferPool, endPoint.getQuicConnection(), channel, peer, endPoint.getTimeoutSetter());
+            QuicWriteCommand quicWriteCommand = new QuicWriteCommand(bufferPool, channel, endPoint);
             if (!quicWriteCommand.execute())
             {
                 commands.offer(quicWriteCommand);
@@ -274,9 +274,9 @@ public class QuicConnector extends AbstractNetworkConnector
         return needWrite;
     }
 
-    private QuicEndPoint createQuicEndPoint(QuicConnection acceptedQuicConnection) throws IOException
+    private QuicEndPoint createQuicEndPoint(QuicConnection acceptedQuicConnection, SocketAddress peer) throws IOException
     {
-        QuicEndPoint endPoint = new QuicEndPoint(getScheduler(), acceptedQuicConnection, channel.getLocalAddress());
+        QuicEndPoint endPoint = new QuicEndPoint(getScheduler(), acceptedQuicConnection, channel.getLocalAddress(), peer);
         Connection connection = getDefaultConnectionFactory().newConnection(this, endPoint);
         endPoint.setConnection(connection);
         connection.onOpen();
@@ -326,10 +326,10 @@ public class QuicConnector extends AbstractNetworkConnector
         private final boolean close;
         private boolean timeoutCalled;
 
-        public QuicTimeoutCommand(ByteBufferPool bufferPool, QuicConnection quicConnection, DatagramChannel channel, SocketAddress lastPeer, LongConsumer timeoutSetter, boolean close)
+        public QuicTimeoutCommand(ByteBufferPool bufferPool, QuicEndPoint quicEndPoint, DatagramChannel channel, boolean close)
         {
             this.close = close;
-            this.quicWriteCommand = new QuicWriteCommand("timeout", bufferPool, quicConnection, channel, lastPeer, timeoutSetter);
+            this.quicWriteCommand = new QuicWriteCommand("timeout", bufferPool, channel, quicEndPoint);
         }
 
         @Override
@@ -364,19 +364,19 @@ public class QuicConnector extends AbstractNetworkConnector
 
         private ByteBuffer buffer;
 
-        public QuicWriteCommand(ByteBufferPool bufferPool, QuicConnection quicConnection, DatagramChannel channel, SocketAddress peer, LongConsumer timeoutConsumer)
+        public QuicWriteCommand(ByteBufferPool bufferPool, DatagramChannel channel, QuicEndPoint endPoint)
         {
-            this("write", bufferPool, quicConnection, channel, peer, timeoutConsumer);
+            this("write", bufferPool, channel, endPoint);
         }
 
-        public QuicWriteCommand(String cmdName, ByteBufferPool bufferPool, QuicConnection quicConnection, DatagramChannel channel, SocketAddress peer, LongConsumer timeoutConsumer)
+        public QuicWriteCommand(String cmdName, ByteBufferPool bufferPool, DatagramChannel channel, QuicEndPoint endPoint)
         {
             this.cmdName = cmdName;
             this.bufferPool = bufferPool;
-            this.quicConnection = quicConnection;
+            this.quicConnection = endPoint.getQuicConnection();
             this.channel = channel;
-            this.peer = peer;
-            this.timeoutConsumer = timeoutConsumer;
+            this.peer = endPoint.getLastPeer();
+            this.timeoutConsumer = endPoint.getTimeoutSetter();
         }
 
         @Override

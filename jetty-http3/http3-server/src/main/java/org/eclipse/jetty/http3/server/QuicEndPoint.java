@@ -37,11 +37,12 @@ public class QuicEndPoint extends AbstractEndPoint
         LOG.debug("next timeout is in {}ms", timeoutInMs);
     };
 
-    protected QuicEndPoint(Scheduler scheduler, QuicConnection quicConnection, SocketAddress localAddress)
+    protected QuicEndPoint(Scheduler scheduler, QuicConnection quicConnection, SocketAddress localAddress, SocketAddress peer)
     {
         super(scheduler);
         this.quicConnection = quicConnection;
         this.localAddress = localAddress;
+        this.lastPeer = peer;
     }
 
     public SocketAddress getLastPeer()
