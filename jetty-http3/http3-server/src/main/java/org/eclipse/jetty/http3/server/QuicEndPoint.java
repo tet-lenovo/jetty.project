@@ -120,6 +120,9 @@ public class QuicEndPoint extends AbstractEndPoint
             byte[] buf = new byte[remaining];
             read = stream.read(buf);
             buffer.put(buf, 0, read);
+
+            if (stream.isReceivedFin())
+                shutdownInput();
         }
         BufferUtil.flipToFlush(buffer, pos);
         LOG.debug("filled {} bytes", read);
