@@ -1,12 +1,19 @@
 package org.eclipse.jetty.http3.server;
 
+import java.io.IOException;
+import java.io.PrintWriter;
+import javax.servlet.ServletException;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+
 import org.eclipse.jetty.http.HttpCompliance;
 import org.eclipse.jetty.server.Connector;
 import org.eclipse.jetty.server.Handler;
 import org.eclipse.jetty.server.HttpConfiguration;
 import org.eclipse.jetty.server.HttpConnectionFactory;
+import org.eclipse.jetty.server.Request;
 import org.eclipse.jetty.server.Server;
-import org.eclipse.jetty.server.handler.DefaultHandler;
+import org.eclipse.jetty.server.handler.AbstractHandler;
 import org.eclipse.jetty.server.handler.HandlerList;
 import org.junit.jupiter.api.Test;
 
@@ -26,7 +33,19 @@ public class End2EndTest
         quicConnector.addConnectionFactory(factory);
 
         HandlerList handlers = new HandlerList();
-        handlers.setHandlers(new Handler[]{new DefaultHandler()});
+        handlers.setHandlers(new Handler[]{new AbstractHandler() {
+            @Override
+            public void handle(String target, Request baseRequest, HttpServletRequest request, HttpServletResponse response) throws IOException, ServletException
+            {
+                baseRequest.setHandled(true);
+                PrintWriter writer = response.getWriter();
+                writer.println("<html>\n" +
+                    "\t<body>\n" +
+                    "\t\tRequest served\n" +
+                    "\t</body>\n" +
+                    "</html>");
+            }
+        }});
         server.setHandler(handlers);
 
         server.start();
