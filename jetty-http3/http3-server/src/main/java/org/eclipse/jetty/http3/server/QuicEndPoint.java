@@ -102,12 +102,22 @@ public class QuicEndPoint extends AbstractEndPoint
             close();
     }
 
+    public boolean closeQuicConnection() throws IOException
+    {
+        return quicConnection.close();
+    }
+
+    public boolean isQuicConnectionClosed()
+    {
+        return quicConnection.isConnectionClosed();
+    }
+
     public QuicConnection getQuicConnection()
     {
         return quicConnection;
     }
 
-    public boolean hasTimedOut()
+    public boolean hasQuicConnectionTimedOut()
     {
         return System.nanoTime() - registrationTsInNs >= timeoutInNs;
     }

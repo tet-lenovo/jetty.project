@@ -119,7 +119,7 @@ public class QuicConnector extends AbstractNetworkConnector
 
     private void fireTimeoutNotificationIfNeeded()
     {
-        boolean timedOut = endpoints.values().stream().map(QuicEndPoint::hasTimedOut).findFirst().orElse(false);
+        boolean timedOut = endpoints.values().stream().map(QuicEndPoint::hasQuicConnectionTimedOut).findFirst().orElse(false);
         if (timedOut)
         {
             LOG.debug("connection timed out, waking up selector");
@@ -172,10 +172,10 @@ public class QuicConnector extends AbstractNetworkConnector
         while (it.hasNext())
         {
             QuicEndPoint quicEndPoint = it.next();
-            if (quicEndPoint.hasTimedOut())
+            if (quicEndPoint.hasQuicConnectionTimedOut())
             {
                 LOG.debug("connection has timed out: " + quicEndPoint);
-                boolean closed = quicEndPoint.getQuicConnection().isConnectionClosed();
+                boolean closed = quicEndPoint.isQuicConnectionClosed();
                 if (closed)
                 {
                     quicEndPoint.close();
@@ -269,7 +269,7 @@ public class QuicConnector extends AbstractNetworkConnector
                 commands.offer(quicSendCommand);
                 needWrite = true;
             }
-            if (!endPoint.isOpen() && endPoint.getQuicConnection().sendClose())
+            if (!endPoint.isOpen() && endPoint.closeQuicConnection())
             {
                 quicSendCommand = new QuicSendCommand(bufferPool, channel, endPoint);
                 if (!quicSendCommand.execute())
@@ -354,8 +354,8 @@ public class QuicConnector extends AbstractNetworkConnector
                 return false;
             if (close)
             {
-                LOG.debug("closing quiche connection");
-                quicSendCommand.quicConnection.close();
+                LOG.debug("disposing of quiche connection");
+                quicSendCommand.quicConnection.dispose();
             }
             return true;
         }

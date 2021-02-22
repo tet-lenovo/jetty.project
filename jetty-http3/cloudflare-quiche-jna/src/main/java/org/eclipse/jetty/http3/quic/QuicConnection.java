@@ -29,7 +29,7 @@ import static org.eclipse.jetty.http3.quic.quiche.LibQuiche.QUICHE_MAX_CONN_ID_L
 import static org.eclipse.jetty.http3.quic.quiche.LibQuiche.quiche_error.QUICHE_ERR_DONE;
 import static org.eclipse.jetty.http3.quic.quiche.LibQuiche.quiche_error.errToString;
 
-public class QuicConnection implements Closeable
+public class QuicConnection
 {
     private static final Logger LOGGER = LoggerFactory.getLogger(QuicConnection.class);
     static
@@ -442,8 +442,7 @@ public class QuicConnection implements Closeable
             "]";
     }
 
-    @Override
-    public void close()
+    public void dispose()
     {
         if (quicheConn != null)
         {
@@ -463,7 +462,7 @@ public class QuicConnection implements Closeable
         return INSTANCE.quiche_conn_is_draining(quicheConn);
     }
 
-    public boolean sendClose() throws IOException
+    public boolean close() throws IOException
     {
         int rc = INSTANCE.quiche_conn_close(quicheConn, true, new uint64_t(0), null, new size_t(0));
         if (rc == 0)
