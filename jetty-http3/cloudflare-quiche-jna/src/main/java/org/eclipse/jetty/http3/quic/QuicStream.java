@@ -55,6 +55,11 @@ public class QuicStream
         return sent;
     }
 
+    public boolean isFinished()
+    {
+        return INSTANCE.quiche_conn_stream_finished(quicheConn, new uint64_t(streamId));
+    }
+
     public boolean isReceivedFin()
     {
         return receivedFin;

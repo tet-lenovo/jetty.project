@@ -286,6 +286,9 @@ public interface LibQuiche extends Library
     // enough to send or receive early data.
     boolean quiche_conn_is_in_early_data(quiche_conn conn);
 
+    // Returns true if the connection is draining.
+    boolean quiche_conn_is_draining(quiche_conn conn);
+
     // Returns true if the connection is closed.
     boolean quiche_conn_is_closed(quiche_conn conn);
 

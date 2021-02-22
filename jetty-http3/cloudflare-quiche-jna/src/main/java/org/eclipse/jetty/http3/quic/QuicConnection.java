@@ -458,10 +458,18 @@ public class QuicConnection implements Closeable
         quicConnectionId = null;
     }
 
+    public boolean isDraining()
+    {
+        return INSTANCE.quiche_conn_is_draining(quicheConn);
+    }
+
     public void sendClose() throws IOException
     {
         int rc = INSTANCE.quiche_conn_close(quicheConn, true, new uint64_t(0), null, new size_t(0));
-        if (rc < 0)
-            throw new IOException("failed to close connection: " + LibQuiche.quiche_error.errToString(rc));
+        if (rc == 0)
+            return true;
+        if (rc == QUICHE_ERR_DONE)
+            return false;
+        throw new IOException("failed to close connection: " + LibQuiche.quiche_error.errToString(rc));
     }
 }
