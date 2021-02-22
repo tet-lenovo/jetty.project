@@ -1,6 +1,5 @@
 package org.eclipse.jetty.http3.quic;
 
-import java.io.Closeable;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
@@ -12,6 +11,7 @@ import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
 
+import com.sun.jna.ptr.PointerByReference;
 import org.eclipse.jetty.http3.quic.quiche.LibQuiche;
 import org.eclipse.jetty.http3.quic.quiche.size_t;
 import org.eclipse.jetty.http3.quic.quiche.size_t_pointer;
@@ -427,6 +427,14 @@ public class QuicConnection
     public void onTimeout()
     {
         INSTANCE.quiche_conn_on_timeout(quicheConn);
+    }
+
+    public String getNegotiatedProtocol()
+    {
+        PointerByReference out = new PointerByReference();
+        size_t_pointer outLen = new size_t_pointer();
+        INSTANCE.quiche_conn_application_proto(quicheConn, out, outLen);
+        return new String(out.getValue().getByteArray(0, (int)outLen.getValue()), StandardCharsets.US_ASCII);
     }
 
     public String statistics()

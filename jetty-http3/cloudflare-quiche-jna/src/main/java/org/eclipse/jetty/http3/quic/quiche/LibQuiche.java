@@ -8,6 +8,7 @@ import com.sun.jna.Library;
 import com.sun.jna.Native;
 import com.sun.jna.Pointer;
 import com.sun.jna.Structure;
+import com.sun.jna.ptr.PointerByReference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -278,6 +279,9 @@ public interface LibQuiche extends Library
 
     // Processes QUIC packets received from the peer.
     ssize_t quiche_conn_recv(quiche_conn conn, ByteBuffer buf, size_t buf_len);
+
+    // Returns the negotiated ALPN protocol.
+    void quiche_conn_application_proto(quiche_conn conn, PointerByReference out, size_t_pointer out_len);
 
     // Returns true if the connection handshake is complete.
     boolean quiche_conn_is_established(quiche_conn conn);
