@@ -248,7 +248,7 @@ public class QuicConnector extends AbstractNetworkConnector
             {
                 LOG.debug("new connection accepted");
                 bufferPool.release(newConnectionNegotiationToSend);
-                endPoint = createQuicEndPoint(acceptedQuicConnection, peer);
+                endPoint = new QuicEndPoint(getScheduler(), acceptedQuicConnection, channel.getLocalAddress(), peer, this);
                 endpoints.put(connectionId, endPoint);
                 QuicSendCommand quicSendCommand = new QuicSendCommand(bufferPool, channel, endPoint);
                 if (!quicSendCommand.execute())
@@ -282,9 +282,9 @@ public class QuicConnector extends AbstractNetworkConnector
         return needWrite;
     }
 
-    private QuicEndPoint createQuicEndPoint(QuicConnection acceptedQuicConnection, SocketAddress peer) throws IOException
+    QuicStreamEndPoint createQuicStreamEndPoint(QuicEndPoint quicEndPoint, long streamId)
     {
-        QuicEndPoint endPoint = new QuicEndPoint(getScheduler(), acceptedQuicConnection, channel.getLocalAddress(), peer);
+        QuicStreamEndPoint endPoint = new QuicStreamEndPoint(getScheduler(), quicEndPoint, streamId);
         Connection connection = getDefaultConnectionFactory().newConnection(this, endPoint);
         endPoint.setConnection(connection);
         connection.onOpen();

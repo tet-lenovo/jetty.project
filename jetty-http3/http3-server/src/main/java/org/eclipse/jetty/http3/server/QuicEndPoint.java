@@ -5,15 +5,15 @@ import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.nio.ByteBuffer;
 import java.util.Iterator;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.LongConsumer;
 
 import org.eclipse.jetty.http3.quic.QuicConnection;
 import org.eclipse.jetty.http3.quic.QuicStream;
 import org.eclipse.jetty.io.AbstractEndPoint;
 import org.eclipse.jetty.io.ByteBufferPool;
-import org.eclipse.jetty.io.EofException;
 import org.eclipse.jetty.util.BufferUtil;
 import org.eclipse.jetty.util.thread.Scheduler;
 import org.slf4j.Logger;
@@ -23,12 +23,14 @@ public class QuicEndPoint extends AbstractEndPoint
 {
     protected static final Logger LOG = LoggerFactory.getLogger(QuicEndPoint.class);
 
-    private final AtomicBoolean fillInterested = new AtomicBoolean();
-    private final QuicConnection quicConnection;
+    final QuicConnection quicConnection;
+    private final Map<Long, QuicStreamEndPoint> streamEndpoints = new ConcurrentHashMap<>();
+
     private final SocketAddress localAddress;
     private volatile long registrationTsInNs;
     private volatile long timeoutInNs;
     private volatile SocketAddress lastPeer;
+    private final QuicConnector quicConnector;
 
     private final LongConsumer timeoutSetter = timeoutInMs ->
     {
@@ -37,12 +39,13 @@ public class QuicEndPoint extends AbstractEndPoint
         LOG.debug("next timeout is in {}ms", timeoutInMs);
     };
 
-    protected QuicEndPoint(Scheduler scheduler, QuicConnection quicConnection, SocketAddress localAddress, SocketAddress peer)
+    protected QuicEndPoint(Scheduler scheduler, QuicConnection quicConnection, SocketAddress localAddress, SocketAddress peer, QuicConnector quicConnector)
     {
         super(scheduler);
         this.quicConnection = quicConnection;
         this.localAddress = localAddress;
         this.lastPeer = peer;
+        this.quicConnector = quicConnector;
     }
 
     public SocketAddress getLastPeer()
@@ -70,16 +73,33 @@ public class QuicEndPoint extends AbstractEndPoint
         if (quicConnection.isConnectionEstablished())
         {
             Iterator<QuicStream> it = quicConnection.readableStreamsIterator();
-            if (it.hasNext())
+            while (it.hasNext())
             {
-                LOG.debug("a stream is readable");
-                if (fillInterested.compareAndSet(true, false))
+                QuicStream stream = it.next();
+                long streamId = stream.getStreamId();
+                LOG.debug("stream {} is readable", streamId);
+
+                QuicStreamEndPoint streamEndPoint = streamEndpoints.compute(streamId, (sid, quicStreamEndPoint) ->
+                {
+                    if (quicStreamEndPoint == null)
+                        quicStreamEndPoint = quicConnector.createQuicStreamEndPoint(QuicEndPoint.this, sid);
+                    return quicStreamEndPoint;
+                });
+
+                if (streamEndPoint.fillInterested.compareAndSet(true, false))
                 {
                     LOG.debug("Fillable");
-                    getFillInterest().fillable();
+                    streamEndPoint.getFillInterest().fillable();
                 }
             }
         }
+    }
+
+    void onStreamClosed(long streamId)
+    {
+        streamEndpoints.remove(streamId);
+        if (streamEndpoints.isEmpty())
+            close();
     }
 
     public QuicConnection getQuicConnection()
@@ -107,81 +127,13 @@ public class QuicEndPoint extends AbstractEndPoint
     @Override
     public int fill(ByteBuffer buffer) throws IOException
     {
-        if (quicConnection.isConnectionClosed())
-            return -1;
-
-        int pos = BufferUtil.flipToFill(buffer);
-        int read = 0;
-        Iterator<QuicStream> it = quicConnection.readableStreamsIterator();
-        if (it.hasNext())
-        {
-            QuicStream stream = it.next();
-            int remaining = buffer.remaining();
-            byte[] buf = new byte[remaining];
-            read = stream.read(buf);
-            buffer.put(buf, 0, read);
-
-            if (stream.isReceivedFin())
-                shutdownInput();
-        }
-        BufferUtil.flipToFlush(buffer, pos);
-        LOG.debug("filled {} bytes", read);
-        return read;
+        throw new UnsupportedOperationException("cannot fill from raw Quic endpoint");
     }
 
     @Override
     public boolean flush(ByteBuffer... buffers) throws IOException
     {
-        LOG.debug("flush");
-        if (quicConnection.isConnectionClosed())
-            throw new IOException("connection is closed");
-
-        Iterator<QuicStream> it = quicConnection.writableStreamsIterator();
-        if (it.hasNext())
-        {
-            QuicStream stream = it.next();
-
-            long flushed = 0L;
-            try
-            {
-                for (ByteBuffer buffer : buffers)
-                {
-                    flushed += writeToStream(stream, buffer);
-                }
-                if (LOG.isDebugEnabled())
-                    LOG.debug("flushed {} {}", flushed, this);
-            }
-            catch (IOException e)
-            {
-                throw new EofException(e);
-            }
-
-            if (flushed > 0)
-                notIdle();
-
-            for (ByteBuffer b : buffers)
-            {
-                if (!BufferUtil.isEmpty(b))
-                    return false;
-            }
-
-            return true;
-        }
-        else
-        {
-            return false;
-        }
-    }
-
-    private long writeToStream(QuicStream stream, ByteBuffer buffer) throws IOException
-    {
-        byte[] buf = new byte[buffer.remaining()];
-        buffer.get(buf);
-        int written = stream.write(buf, false);
-        int remaining = buf.length - written;
-        if (remaining != 0)
-            buffer.position(buffer.position() - remaining);
-        return written;
+        throw new UnsupportedOperationException("cannot flush raw Quic endpoint");
     }
 
     @Override
@@ -199,7 +151,6 @@ public class QuicEndPoint extends AbstractEndPoint
     @Override
     protected void needsFillInterest() throws IOException
     {
-        LOG.debug("fill interested; currently interested? {}", fillInterested.get());
-        fillInterested.set(true);
+        throw new UnsupportedOperationException("cannot set need for fill interest from raw Quic endpoint");
     }
 }
