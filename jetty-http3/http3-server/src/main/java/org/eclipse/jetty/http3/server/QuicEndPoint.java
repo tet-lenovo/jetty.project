@@ -82,19 +82,6 @@ public class QuicEndPoint extends AbstractEndPoint
         }
     }
 
-    @Override
-    protected void doClose()
-    {
-        try
-        {
-            quicConnection.sendClose();
-        }
-        catch (IOException e)
-        {
-            throw new RuntimeException(e);
-        }
-    }
-
     public QuicConnection getQuicConnection()
     {
         return quicConnection;

@@ -269,6 +269,15 @@ public class QuicConnector extends AbstractNetworkConnector
                 commands.offer(quicSendCommand);
                 needWrite = true;
             }
+            if (!endPoint.isOpen() && endPoint.getQuicConnection().sendClose())
+            {
+                quicSendCommand = new QuicSendCommand(bufferPool, channel, endPoint);
+                if (!quicSendCommand.execute())
+                {
+                    commands.offer(quicSendCommand);
+                    needWrite = true;
+                }
+            }
         }
         return needWrite;
     }

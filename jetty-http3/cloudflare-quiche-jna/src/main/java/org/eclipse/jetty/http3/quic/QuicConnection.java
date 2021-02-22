@@ -463,7 +463,7 @@ public class QuicConnection implements Closeable
         return INSTANCE.quiche_conn_is_draining(quicheConn);
     }
 
-    public void sendClose() throws IOException
+    public boolean sendClose() throws IOException
     {
         int rc = INSTANCE.quiche_conn_close(quicheConn, true, new uint64_t(0), null, new size_t(0));
         if (rc == 0)
