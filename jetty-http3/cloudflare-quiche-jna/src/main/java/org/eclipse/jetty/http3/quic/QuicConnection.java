@@ -464,12 +464,4 @@ public class QuicConnection implements Closeable
         if (rc < 0)
             throw new IOException("failed to close connection: " + LibQuiche.quiche_error.errToString(rc));
     }
-
-    public void streamSend(long streamId, String data, boolean fin) throws IOException
-    {
-        byte[] bytes = data.getBytes(StandardCharsets.UTF_8);
-        int rc = INSTANCE.quiche_conn_stream_send(quicheConn, new uint64_t(streamId), bytes, new size_t(bytes.length), fin).intValue();
-        if (rc < 0)
-            throw new IOException("Error sending request: " + LibQuiche.quiche_error.errToString(rc));
-    }
 }
