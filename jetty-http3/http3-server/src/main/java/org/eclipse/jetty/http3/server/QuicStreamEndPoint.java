@@ -54,12 +54,7 @@ public class QuicStreamEndPoint extends AbstractEndPoint
             QuicStream stream = it.next();
             if (stream.getStreamId() != streamId)
                 continue;
-
-            int remaining = buffer.remaining();
-            byte[] buf = new byte[remaining];
-            read = stream.read(buf);
-            buffer.put(buf, 0, read);
-
+            read = stream.read(buffer);
             if (stream.isReceivedFin())
                 shutdownInput();
         }
@@ -93,7 +88,7 @@ public class QuicStreamEndPoint extends AbstractEndPoint
             {
                 for (ByteBuffer buffer : buffers)
                 {
-                    flushed += writeToStream(stream, buffer);
+                    flushed += stream.write(buffer, false);
                 }
                 if (LOG.isDebugEnabled())
                     LOG.debug("flushed {} {}", flushed, this);
@@ -115,17 +110,6 @@ public class QuicStreamEndPoint extends AbstractEndPoint
             return true;
         }
         return false;
-    }
-
-    private static long writeToStream(QuicStream stream, ByteBuffer buffer) throws IOException
-    {
-        byte[] buf = new byte[buffer.remaining()];
-        buffer.get(buf);
-        int written = stream.write(buf, false);
-        int remaining = buf.length - written;
-        if (remaining != 0)
-            buffer.position(buffer.position() - remaining);
-        return written;
     }
 
     @Override

@@ -45,7 +45,7 @@ public interface LibQuiche extends Library
     interface quiche_cc_algorithm {
         int QUICHE_CC_RENO = 0,
         QUICHE_CC_CUBIC = 1;
-    };
+    }
 
     interface quiche_error {
         // There is no more work to do.
@@ -332,10 +332,10 @@ public interface LibQuiche extends Library
     void quiche_stream_iter_free(quiche_stream_iter iter);
 
     // Reads contiguous data from a stream.
-    ssize_t quiche_conn_stream_recv(quiche_conn conn, uint64_t stream_id, byte[] out, size_t buf_len, bool_pointer fin);
+    ssize_t quiche_conn_stream_recv(quiche_conn conn, uint64_t stream_id, ByteBuffer out, size_t buf_len, bool_pointer fin);
 
     // Writes data to a stream.
-    ssize_t quiche_conn_stream_send(quiche_conn conn, uint64_t stream_id, byte[] buf, size_t buf_len, boolean fin);
+    ssize_t quiche_conn_stream_send(quiche_conn conn, uint64_t stream_id, ByteBuffer buf, size_t buf_len, boolean fin);
 
     // Frees the connection object.
     void quiche_conn_free(quiche_conn conn);
