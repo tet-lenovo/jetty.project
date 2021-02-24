@@ -19,7 +19,6 @@ import org.eclipse.jetty.http3.quic.QuicConfig;
 import org.eclipse.jetty.http3.quic.QuicConnection;
 import org.eclipse.jetty.http3.quic.QuicConnectionId;
 import org.eclipse.jetty.http3.quic.quiche.LibQuiche;
-import org.eclipse.jetty.io.AbstractEndPoint;
 import org.eclipse.jetty.io.ByteBufferPool;
 import org.eclipse.jetty.io.Connection;
 import org.eclipse.jetty.server.AbstractNetworkConnector;
@@ -37,7 +36,7 @@ public class QuicConnector extends AbstractNetworkConnector
     private DatagramChannel channel;
     private QuicConfig quicConfig;
 
-    private final Map<QuicConnectionId, QuicEndPoint> endpoints = new ConcurrentHashMap<>();
+    private final Map<QuicConnectionId, QuicEndPointManager> endpoints = new ConcurrentHashMap<>();
     private final Deque<Command> commands = new ArrayDeque<>();
     private final Runnable selection = () ->
     {
@@ -109,7 +108,7 @@ public class QuicConnector extends AbstractNetworkConnector
         if (selector == null)
             return;
 
-        endpoints.values().forEach(AbstractEndPoint::close);
+        endpoints.values().forEach(QuicEndPointManager::dispose);
         endpoints.clear();
         IO.close(channel);
         channel = null;
@@ -120,7 +119,7 @@ public class QuicConnector extends AbstractNetworkConnector
 
     private void fireTimeoutNotificationIfNeeded()
     {
-        boolean timedOut = endpoints.values().stream().map(QuicEndPoint::hasQuicConnectionTimedOut).findFirst().orElse(false);
+        boolean timedOut = endpoints.values().stream().map(QuicEndPointManager::hasQuicConnectionTimedOut).findFirst().orElse(false);
         if (timedOut)
         {
             LOG.debug("connection timed out, waking up selector");
@@ -169,21 +168,21 @@ public class QuicConnector extends AbstractNetworkConnector
     private void processTimeout() throws IOException
     {
         boolean needWrite = false;
-        Iterator<QuicEndPoint> it = endpoints.values().iterator();
+        Iterator<QuicEndPointManager> it = endpoints.values().iterator();
         while (it.hasNext())
         {
-            QuicEndPoint quicEndPoint = it.next();
-            if (quicEndPoint.hasQuicConnectionTimedOut())
+            QuicEndPointManager quicEndPointManager = it.next();
+            if (quicEndPointManager.hasQuicConnectionTimedOut())
             {
-                LOG.debug("connection has timed out: " + quicEndPoint);
-                boolean closed = quicEndPoint.isQuicConnectionClosed();
+                LOG.debug("connection has timed out: " + quicEndPointManager);
+                boolean closed = quicEndPointManager.isQuicConnectionClosed();
                 if (closed)
                 {
-                    quicEndPoint.close();
+                    quicEndPointManager.close();
                     it.remove();
                     LOG.debug("connection closed due to timeout; remaining connections: " + endpoints);
                 }
-                QuicTimeoutCommand quicTimeoutCommand = new QuicTimeoutCommand(getByteBufferPool(), quicEndPoint, channel, closed);
+                QuicTimeoutCommand quicTimeoutCommand = new QuicTimeoutCommand(getByteBufferPool(), quicEndPointManager, channel, closed);
                 if (!quicTimeoutCommand.execute())
                 {
                     commands.offer(quicTimeoutCommand);
@@ -226,7 +225,7 @@ public class QuicConnector extends AbstractNetworkConnector
         buffer.flip();
 
         QuicConnectionId connectionId = QuicConnectionId.fromPacket(buffer);
-        QuicEndPoint endPoint = endpoints.get(connectionId);
+        QuicEndPointManager endPoint = endpoints.get(connectionId);
         if (endPoint == null)
         {
             LOG.debug("got packet for a new connection");
@@ -249,7 +248,7 @@ public class QuicConnector extends AbstractNetworkConnector
             {
                 LOG.debug("new connection accepted");
                 bufferPool.release(newConnectionNegotiationToSend);
-                endPoint = new QuicEndPoint(getScheduler(), acceptedQuicConnection, channel.getLocalAddress(), peer, this);
+                endPoint = new QuicEndPointManager(acceptedQuicConnection, (InetSocketAddress)channel.getLocalAddress(), (InetSocketAddress)peer, this);
                 endpoints.put(connectionId, endPoint);
                 QuicSendCommand quicSendCommand = new QuicSendCommand(bufferPool, channel, endPoint);
                 if (!quicSendCommand.execute())
@@ -263,14 +262,14 @@ public class QuicConnector extends AbstractNetworkConnector
         {
             LOG.debug("got packet for an existing connection: " + connectionId + " - buffer: p=" + buffer.position() + " r=" + buffer.remaining());
             // existing connection
-            endPoint.handlePacket(buffer, peer, bufferPool);
+            endPoint.handlePacket(buffer, (InetSocketAddress)peer, bufferPool);
             QuicSendCommand quicSendCommand = new QuicSendCommand(bufferPool, channel, endPoint);
             if (!quicSendCommand.execute())
             {
                 commands.offer(quicSendCommand);
                 needWrite = true;
             }
-            if (!endPoint.isOpen() && endPoint.closeQuicConnection())
+            if (endPoint.isClosed() && endPoint.closeQuicConnection())
             {
                 quicSendCommand = new QuicSendCommand(bufferPool, channel, endPoint);
                 if (!quicSendCommand.execute())
@@ -283,9 +282,9 @@ public class QuicConnector extends AbstractNetworkConnector
         return needWrite;
     }
 
-    QuicStreamEndPoint createQuicStreamEndPoint(QuicEndPoint quicEndPoint, long streamId)
+    QuicStreamEndPoint createQuicStreamEndPoint(QuicEndPointManager quicEndPointManager, long streamId)
     {
-        QuicStreamEndPoint endPoint = new QuicStreamEndPoint(getScheduler(), quicEndPoint, streamId);
+        QuicStreamEndPoint endPoint = new QuicStreamEndPoint(getScheduler(), quicEndPointManager, streamId);
         Connection connection = getDefaultConnectionFactory().newConnection(this, endPoint);
         endPoint.setConnection(connection);
         connection.onOpen();
@@ -335,10 +334,10 @@ public class QuicConnector extends AbstractNetworkConnector
         private final boolean close;
         private boolean timeoutCalled;
 
-        public QuicTimeoutCommand(ByteBufferPool bufferPool, QuicEndPoint quicEndPoint, DatagramChannel channel, boolean close)
+        public QuicTimeoutCommand(ByteBufferPool bufferPool, QuicEndPointManager quicEndPointManager, DatagramChannel channel, boolean close)
         {
             this.close = close;
-            this.quicSendCommand = new QuicSendCommand("timeout", bufferPool, channel, quicEndPoint);
+            this.quicSendCommand = new QuicSendCommand("timeout", bufferPool, channel, quicEndPointManager);
         }
 
         @Override
@@ -373,19 +372,19 @@ public class QuicConnector extends AbstractNetworkConnector
 
         private ByteBuffer buffer;
 
-        public QuicSendCommand(ByteBufferPool bufferPool, DatagramChannel channel, QuicEndPoint endPoint)
+        public QuicSendCommand(ByteBufferPool bufferPool, DatagramChannel channel, QuicEndPointManager quicEndPointManager)
         {
-            this("send", bufferPool, channel, endPoint);
+            this("send", bufferPool, channel, quicEndPointManager);
         }
 
-        private QuicSendCommand(String cmdName, ByteBufferPool bufferPool, DatagramChannel channel, QuicEndPoint endPoint)
+        private QuicSendCommand(String cmdName, ByteBufferPool bufferPool, DatagramChannel channel, QuicEndPointManager quicEndPointManager)
         {
             this.cmdName = cmdName;
             this.bufferPool = bufferPool;
-            this.quicConnection = endPoint.getQuicConnection();
+            this.quicConnection = quicEndPointManager.getQuicConnection();
             this.channel = channel;
-            this.peer = endPoint.getLastPeer();
-            this.timeoutConsumer = endPoint.getTimeoutSetter();
+            this.peer = quicEndPointManager.getRemoteAddress();
+            this.timeoutConsumer = quicEndPointManager.getTimeoutSetter();
         }
 
         @Override

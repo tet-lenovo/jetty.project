@@ -2,7 +2,6 @@ package org.eclipse.jetty.http3.server;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.net.SocketAddress;
 import java.nio.ByteBuffer;
 import java.util.Iterator;
 import java.util.Map;
@@ -12,50 +11,55 @@ import java.util.function.LongConsumer;
 
 import org.eclipse.jetty.http3.quic.QuicConnection;
 import org.eclipse.jetty.http3.quic.QuicStream;
-import org.eclipse.jetty.io.AbstractEndPoint;
 import org.eclipse.jetty.io.ByteBufferPool;
 import org.eclipse.jetty.util.BufferUtil;
-import org.eclipse.jetty.util.thread.Scheduler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class QuicEndPoint extends AbstractEndPoint
+public class QuicEndPointManager
 {
-    protected static final Logger LOG = LoggerFactory.getLogger(QuicEndPoint.class);
+    protected static final Logger LOG = LoggerFactory.getLogger(QuicEndPointManager.class);
 
-    final QuicConnection quicConnection;
+    private final QuicConnector quicConnector;
+    private final QuicConnection quicConnection;
     private final Map<Long, QuicStreamEndPoint> streamEndpoints = new ConcurrentHashMap<>();
-
-    private final SocketAddress localAddress;
+    private final InetSocketAddress localAddress;
+    private volatile InetSocketAddress remoteAddress;
     private volatile long registrationTsInNs;
     private volatile long timeoutInNs;
-    private volatile SocketAddress lastPeer;
-    private final QuicConnector quicConnector;
+    private volatile boolean closed;
 
-    private final LongConsumer timeoutSetter = timeoutInMs ->
+    protected QuicEndPointManager(QuicConnection quicConnection, InetSocketAddress localAddress, InetSocketAddress remoteAddress, QuicConnector quicConnector)
     {
-        registrationTsInNs = System.nanoTime();
-        timeoutInNs = TimeUnit.MILLISECONDS.toNanos(timeoutInMs);
-        LOG.debug("next timeout is in {}ms", timeoutInMs);
-    };
-
-    protected QuicEndPoint(Scheduler scheduler, QuicConnection quicConnection, SocketAddress localAddress, SocketAddress peer, QuicConnector quicConnector)
-    {
-        super(scheduler);
         this.quicConnection = quicConnection;
         this.localAddress = localAddress;
-        this.lastPeer = peer;
+        this.remoteAddress = remoteAddress;
         this.quicConnector = quicConnector;
     }
 
-    public SocketAddress getLastPeer()
+    public void dispose()
     {
-        return lastPeer;
+        quicConnection.dispose();
+    }
+
+    public InetSocketAddress getLocalAddress()
+    {
+        return localAddress;
+    }
+
+    public InetSocketAddress getRemoteAddress()
+    {
+        return remoteAddress;
     }
 
     public LongConsumer getTimeoutSetter()
     {
-        return timeoutSetter;
+        return timeoutInMs ->
+        {
+            registrationTsInNs = System.nanoTime();
+            timeoutInNs = TimeUnit.MILLISECONDS.toNanos(timeoutInMs);
+            LOG.debug("next timeout is in {}ms", timeoutInMs);
+        };
     }
 
     /**
@@ -63,10 +67,10 @@ public class QuicEndPoint extends AbstractEndPoint
      * @param peer address of the peer who sent the packet
      * @param bufferPool the pool where to release the buffer when done with it
      */
-    public void handlePacket(ByteBuffer buffer, SocketAddress peer, ByteBufferPool bufferPool) throws IOException
+    public void handlePacket(ByteBuffer buffer, InetSocketAddress peer, ByteBufferPool bufferPool) throws IOException
     {
         LOG.debug("handling packet " + BufferUtil.toDetailString(buffer));
-        lastPeer = peer;
+        remoteAddress = peer;
 
         boolean establishedBefore = quicConnection.isConnectionEstablished();
         quicConnection.recv(buffer);
@@ -87,7 +91,7 @@ public class QuicEndPoint extends AbstractEndPoint
                 QuicStreamEndPoint streamEndPoint = streamEndpoints.compute(streamId, (sid, quicStreamEndPoint) ->
                 {
                     if (quicStreamEndPoint == null)
-                        quicStreamEndPoint = quicConnector.createQuicStreamEndPoint(QuicEndPoint.this, sid);
+                        quicStreamEndPoint = quicConnector.createQuicStreamEndPoint(QuicEndPointManager.this, sid);
                     return quicStreamEndPoint;
                 });
 
@@ -100,11 +104,21 @@ public class QuicEndPoint extends AbstractEndPoint
         }
     }
 
-    void onStreamClosed(long streamId)
+    public void onStreamClosed(long streamId)
     {
         streamEndpoints.remove(streamId);
         if (streamEndpoints.isEmpty())
             close();
+    }
+
+    public boolean isClosed()
+    {
+        return closed;
+    }
+
+    public void close()
+    {
+        closed = true;
     }
 
     public boolean closeQuicConnection() throws IOException
@@ -127,45 +141,27 @@ public class QuicEndPoint extends AbstractEndPoint
         return System.nanoTime() - registrationTsInNs >= timeoutInNs;
     }
 
-    @Override
-    public InetSocketAddress getLocalAddress()
+    public QuicStream quicWritableStream(long streamId)
     {
-        return (InetSocketAddress)localAddress;
+        Iterator<QuicStream> it = quicConnection.writableStreamsIterator();
+        while (it.hasNext())
+        {
+            QuicStream stream = it.next();
+            if (stream.getStreamId() == streamId)
+                return stream;
+        }
+        return null;
     }
 
-    @Override
-    public InetSocketAddress getRemoteAddress()
+    public QuicStream quicReadableStream(long streamId)
     {
-        return (InetSocketAddress)lastPeer;
-    }
-
-    @Override
-    public int fill(ByteBuffer buffer) throws IOException
-    {
-        throw new UnsupportedOperationException("cannot fill from raw Quic endpoint");
-    }
-
-    @Override
-    public boolean flush(ByteBuffer... buffers) throws IOException
-    {
-        throw new UnsupportedOperationException("cannot flush raw Quic endpoint");
-    }
-
-    @Override
-    public Object getTransport()
-    {
-        return quicConnection;
-    }
-
-    @Override
-    protected void onIncompleteFlush()
-    {
-        LOG.debug("onIncompleteFlush");
-    }
-
-    @Override
-    protected void needsFillInterest() throws IOException
-    {
-        throw new UnsupportedOperationException("cannot set need for fill interest from raw Quic endpoint");
+        Iterator<QuicStream> it = quicConnection.readableStreamsIterator();
+        while (it.hasNext())
+        {
+            QuicStream stream = it.next();
+            if (stream.getStreamId() == streamId)
+                return stream;
+        }
+        return null;
     }
 }

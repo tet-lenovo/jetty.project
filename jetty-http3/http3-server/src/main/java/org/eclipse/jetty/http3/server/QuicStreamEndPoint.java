@@ -3,7 +3,6 @@ package org.eclipse.jetty.http3.server;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
-import java.util.Iterator;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.eclipse.jetty.http3.quic.QuicStream;
@@ -17,47 +16,44 @@ import org.slf4j.LoggerFactory;
 public class QuicStreamEndPoint extends AbstractEndPoint
 {
     protected static final Logger LOG = LoggerFactory.getLogger(QuicStreamEndPoint.class);
-    private final QuicEndPoint quicEndPoint;
+    private final QuicEndPointManager quicEndPointManager;
     final AtomicBoolean fillInterested = new AtomicBoolean();
     private final long streamId;
 
-    protected QuicStreamEndPoint(Scheduler scheduler, QuicEndPoint quicEndPoint, long streamId)
+    protected QuicStreamEndPoint(Scheduler scheduler, QuicEndPointManager quicEndPointManager, long streamId)
     {
         super(scheduler);
-        this.quicEndPoint = quicEndPoint;
+        this.quicEndPointManager = quicEndPointManager;
         this.streamId = streamId;
     }
 
     @Override
     public InetSocketAddress getLocalAddress()
     {
-        return quicEndPoint.getLocalAddress();
+        return quicEndPointManager.getLocalAddress();
     }
 
     @Override
     public InetSocketAddress getRemoteAddress()
     {
-        return quicEndPoint.getRemoteAddress();
+        return quicEndPointManager.getRemoteAddress();
     }
 
     @Override
     public int fill(ByteBuffer buffer) throws IOException
     {
-        if (quicEndPoint.quicConnection.isConnectionClosed())
+        if (quicEndPointManager.isQuicConnectionClosed())
             return -1;
 
+        QuicStream quicStream = quicEndPointManager.quicReadableStream(streamId);
+        if (quicStream == null)
+            return 0;
+
         int pos = BufferUtil.flipToFill(buffer);
-        int read = 0;
-        Iterator<QuicStream> it = quicEndPoint.quicConnection.readableStreamsIterator();
-        while (it.hasNext())
-        {
-            QuicStream stream = it.next();
-            if (stream.getStreamId() != streamId)
-                continue;
-            read = stream.read(buffer);
-            if (stream.isReceivedFin())
-                shutdownInput();
-        }
+        int read = quicStream.read(buffer);
+        if (quicStream.isReceivedFin())
+            shutdownInput();
+
         BufferUtil.flipToFlush(buffer, pos);
         LOG.debug("filled {} bytes", read);
         return read;
@@ -66,56 +62,51 @@ public class QuicStreamEndPoint extends AbstractEndPoint
     @Override
     public void onClose(Throwable failure)
     {
-        quicEndPoint.onStreamClosed(streamId);
+        quicEndPointManager.onStreamClosed(streamId);
     }
 
     @Override
     public boolean flush(ByteBuffer... buffers) throws IOException
     {
         LOG.debug("flush");
-        if (quicEndPoint.quicConnection.isConnectionClosed())
+        if (quicEndPointManager.isQuicConnectionClosed())
             throw new IOException("connection is closed");
 
-        Iterator<QuicStream> it = quicEndPoint.quicConnection.writableStreamsIterator();
-        while (it.hasNext())
+        QuicStream quicStream = quicEndPointManager.quicWritableStream(streamId);
+        if (quicStream == null)
+            return false;
+
+        long flushed = 0L;
+        try
         {
-            QuicStream stream = it.next();
-            if (stream.getStreamId() != streamId)
-                continue;
-
-            long flushed = 0L;
-            try
+            for (ByteBuffer buffer : buffers)
             {
-                for (ByteBuffer buffer : buffers)
-                {
-                    flushed += stream.write(buffer, false);
-                }
-                if (LOG.isDebugEnabled())
-                    LOG.debug("flushed {} {}", flushed, this);
+                flushed += quicStream.write(buffer, false);
             }
-            catch (IOException e)
-            {
-                throw new EofException(e);
-            }
-
-            if (flushed > 0)
-                notIdle();
-
-            for (ByteBuffer b : buffers)
-            {
-                if (!BufferUtil.isEmpty(b))
-                    return false;
-            }
-
-            return true;
+            if (LOG.isDebugEnabled())
+                LOG.debug("flushed {} {}", flushed, this);
         }
-        return false;
+        catch (IOException e)
+        {
+            throw new EofException(e);
+        }
+
+        if (flushed > 0)
+            notIdle();
+
+        for (ByteBuffer b : buffers)
+        {
+            if (!BufferUtil.isEmpty(b))
+                return false;
+        }
+
+        return true;
     }
 
     @Override
     public Object getTransport()
     {
-        return quicEndPoint.getTransport();
+        return quicEndPointManager.getQuicConnection();
     }
 
     @Override
