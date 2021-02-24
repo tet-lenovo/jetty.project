@@ -106,13 +106,13 @@ public class QuicStreamEndPoint extends AbstractEndPoint
     @Override
     public Object getTransport()
     {
-        return quicConnection.getQuicheConnection();
+        return quicConnection;
     }
 
     @Override
     protected void onIncompleteFlush()
     {
-        LOG.debug("onIncompleteFlush");
+        LOG.warn("unimplemented onIncompleteFlush");
     }
 
     @Override

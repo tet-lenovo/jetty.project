@@ -6,9 +6,7 @@ import java.nio.ByteBuffer;
 import java.nio.channels.DatagramChannel;
 import java.util.ArrayDeque;
 import java.util.Deque;
-import java.util.function.LongConsumer;
 
-import org.eclipse.jetty.http3.quic.QuicheConnection;
 import org.eclipse.jetty.http3.quic.quiche.LibQuiche;
 import org.eclipse.jetty.io.ByteBufferPool;
 import org.eclipse.jetty.util.BufferUtil;
@@ -28,7 +26,7 @@ public class CommandManager
     }
 
     /**
-     * @return true if the command was immediately processed, false if it was queued.
+     * @return false if the command was immediately processed, true if it was queued.
      */
     public boolean channelWrite(DatagramChannel channel, ByteBuffer buffer, SocketAddress peer) throws IOException
     {
@@ -42,7 +40,7 @@ public class CommandManager
     }
 
     /**
-     * @return true if the command was immediately processed, false if it was queued.
+     * @return false if the command was immediately processed, true if it was queued.
      */
     public boolean quicSend(QuicConnection connection, DatagramChannel channel) throws IOException
     {
@@ -56,11 +54,11 @@ public class CommandManager
     }
 
     /**
-     * @return true if the command was immediately processed, false if it was queued.
+     * @return false if the command was immediately processed, true if it was queued.
      */
-    public boolean quicTimeout(QuicConnection quicConnection, DatagramChannel channel, boolean closed) throws IOException
+    public boolean quicTimeout(QuicConnection quicConnection, DatagramChannel channel, boolean dispose) throws IOException
     {
-        QuicTimeoutCommand quicTimeoutCommand = new QuicTimeoutCommand(quicConnection, channel, closed);
+        QuicTimeoutCommand quicTimeoutCommand = new QuicTimeoutCommand(quicConnection, channel, dispose);
         if (!quicTimeoutCommand.execute())
         {
             commands.offer(quicTimeoutCommand);
@@ -70,18 +68,18 @@ public class CommandManager
     }
 
     /**
-     * @return true if all commands were processed, false otherwise.
+     * @return true if at least one command is left in the queue, false if the queue was depleted.
      */
     public boolean processQueue() throws IOException
     {
-        LOG.debug("processing commands " + commands);
+        LOG.debug("processing commands : {}", commands);
         while (!commands.isEmpty())
         {
             Command command = commands.poll();
-            LOG.debug("executing command " + command);
-            boolean finished = command.execute();
-            LOG.debug("executed command; finished? " + finished);
-            if (!finished)
+            LOG.debug("executing command {}", command);
+            boolean completed = command.execute();
+            LOG.debug("executed command; completed? {}", completed);
+            if (!completed)
             {
                 commands.offer(command);
                 return true;
@@ -91,20 +89,29 @@ public class CommandManager
     }
 
 
-    private interface Command
+    private static abstract class Command
     {
-        boolean execute() throws IOException;
+        /**
+         * @return true if the command completed, false if it needs to be re-executed.
+         */
+        public abstract boolean execute() throws IOException;
+
+        @Override
+        public String toString()
+        {
+            return getClass().getSimpleName();
+        }
     }
 
-    private class QuicTimeoutCommand implements Command
+    private class QuicTimeoutCommand extends Command
     {
         private final QuicSendCommand quicSendCommand;
-        private final boolean close;
+        private final boolean dispose;
         private boolean timeoutCalled;
 
-        public QuicTimeoutCommand(QuicConnection quicConnection, DatagramChannel channel, boolean close)
+        public QuicTimeoutCommand(QuicConnection quicConnection, DatagramChannel channel, boolean dispose)
         {
-            this.close = close;
+            this.dispose = dispose;
             this.quicSendCommand = new QuicSendCommand("timeout", channel, quicConnection);
         }
 
@@ -114,28 +121,27 @@ public class CommandManager
             if (!timeoutCalled)
             {
                 LOG.debug("notifying quiche of timeout");
-                quicSendCommand.quicheConnection.onTimeout();
+                quicSendCommand.quicConnection.quicOnTimeout();
                 timeoutCalled = true;
             }
             boolean written = quicSendCommand.execute();
             if (!written)
                 return false;
-            if (close)
+            if (dispose)
             {
                 LOG.debug("disposing of quiche connection");
-                quicSendCommand.quicheConnection.dispose();
+                quicSendCommand.quicConnection.quicDispose();
             }
             return true;
         }
     }
 
-    private class QuicSendCommand implements Command
+    private class QuicSendCommand extends Command
     {
         private final String cmdName;
-        private final QuicheConnection quicheConnection;
         private final DatagramChannel channel;
         private final SocketAddress peer;
-        private final LongConsumer timeoutConsumer;
+        private final QuicConnection quicConnection;
 
         private ByteBuffer buffer;
 
@@ -147,10 +153,9 @@ public class CommandManager
         private QuicSendCommand(String cmdName, DatagramChannel channel, QuicConnection quicConnection)
         {
             this.cmdName = cmdName;
-            this.quicheConnection = quicConnection.getQuicheConnection();
             this.channel = channel;
             this.peer = quicConnection.getRemoteAddress();
-            this.timeoutConsumer = quicConnection.getTimeoutSetter();
+            this.quicConnection = quicConnection;
         }
 
         @Override
@@ -177,8 +182,7 @@ public class CommandManager
 
             while (true)
             {
-                int quicSent = quicheConnection.send(buffer);
-                timeoutConsumer.accept(quicheConnection.nextTimeout());
+                int quicSent = quicConnection.quicSend(buffer);
                 if (quicSent == 0)
                 {
                     LOG.debug("executed {} command; all done", cmdName);
@@ -200,7 +204,7 @@ public class CommandManager
         }
     }
 
-    private class ChannelWriteCommand implements Command
+    private class ChannelWriteCommand extends Command
     {
         private final ByteBuffer buffer;
         private final DatagramChannel channel;

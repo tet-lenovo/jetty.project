@@ -7,11 +7,9 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
-import java.util.function.LongConsumer;
 
 import org.eclipse.jetty.http3.quic.QuicheConnection;
 import org.eclipse.jetty.http3.quic.QuicheStream;
-import org.eclipse.jetty.io.ByteBufferPool;
 import org.eclipse.jetty.util.BufferUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -52,29 +50,27 @@ public class QuicConnection
         return remoteAddress;
     }
 
-    public LongConsumer getTimeoutSetter()
+    public int quicSend(ByteBuffer buffer) throws IOException
     {
-        return timeoutInMs ->
-        {
-            registrationTsInNs = System.nanoTime();
-            timeoutInNs = TimeUnit.MILLISECONDS.toNanos(timeoutInMs);
-            LOG.debug("next timeout is in {}ms", timeoutInMs);
-        };
+        int quicSent = quicheConnection.send(buffer);
+        long timeoutInMs = quicheConnection.nextTimeout();
+        registrationTsInNs = System.nanoTime();
+        timeoutInNs = TimeUnit.MILLISECONDS.toNanos(timeoutInMs);
+        LOG.debug("next timeout is in {}ms", timeoutInMs);
+        return quicSent;
     }
 
     /**
      * @param buffer cipher text
      * @param peer address of the peer who sent the packet
-     * @param bufferPool the pool where to release the buffer when done with it
      */
-    public void handlePacket(ByteBuffer buffer, InetSocketAddress peer, ByteBufferPool bufferPool) throws IOException
+    public void quicRecv(ByteBuffer buffer, InetSocketAddress peer) throws IOException
     {
         LOG.debug("handling packet " + BufferUtil.toDetailString(buffer));
         remoteAddress = peer;
 
         boolean establishedBefore = quicheConnection.isConnectionEstablished();
         quicheConnection.recv(buffer);
-        bufferPool.release(buffer);
         boolean establishedAfter = quicheConnection.isConnectionEstablished();
         if (!establishedBefore && establishedAfter)
             LOG.debug("newly established connection, negotiated ALPN protocol : {}", quicheConnection.getNegotiatedProtocol());
@@ -121,6 +117,16 @@ public class QuicConnection
         markedClosed = true;
     }
 
+    public void quicDispose()
+    {
+        quicheConnection.dispose();
+    }
+
+    public void quicOnTimeout()
+    {
+        quicheConnection.onTimeout();
+    }
+
     public boolean closeQuicConnection() throws IOException
     {
         return quicheConnection.close();
@@ -129,11 +135,6 @@ public class QuicConnection
     public boolean isQuicConnectionClosed()
     {
         return quicheConnection.isConnectionClosed();
-    }
-
-    public QuicheConnection getQuicheConnection()
-    {
-        return quicheConnection;
     }
 
     public boolean hasQuicConnectionTimedOut()

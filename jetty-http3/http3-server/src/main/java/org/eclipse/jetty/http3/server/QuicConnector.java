@@ -29,34 +29,11 @@ public class QuicConnector extends AbstractNetworkConnector
 {
     protected static final Logger LOG = LoggerFactory.getLogger(QuicConnector.class);
 
+    private final Map<QuicheConnectionId, QuicConnection> connections = new ConcurrentHashMap<>();
     private Selector selector;
     private DatagramChannel channel;
     private QuicheConfig quicheConfig;
     private CommandManager commandManager;
-
-    private final Map<QuicheConnectionId, QuicConnection> connections = new ConcurrentHashMap<>();
-    private final Runnable selection = () ->
-    {
-        String oldName = Thread.currentThread().getName();
-        Thread.currentThread().setName("jetty-quic-acceptor");
-        while (true)
-        {
-            try
-            {
-                selectOnce();
-            }
-            catch (IOException e)
-            {
-                LOG.error("error during selection", e);
-            }
-            catch (InterruptedException e)
-            {
-                LOG.debug("interruption during selection", e);
-                break;
-            }
-        }
-        Thread.currentThread().setName(oldName);
-    };
 
     public QuicConnector(Server server)
     {
@@ -66,11 +43,11 @@ public class QuicConnector extends AbstractNetworkConnector
     @Override
     protected void doStart() throws Exception
     {
-        LibQuiche.Logging.enable(); // load the quiche native lib
         super.doStart();
-        getScheduler().schedule(this::fireTimeoutNotificationIfNeeded, 100, TimeUnit.MILLISECONDS);
-        getExecutor().execute(selection);
+        LibQuiche.Logging.enable(); // load the quiche native lib
         commandManager = new CommandManager(getByteBufferPool());
+        getScheduler().schedule(this::fireTimeoutNotificationIfNeeded, 100, TimeUnit.MILLISECONDS);
+        getExecutor().execute(this::accept);
     }
 
     @Override
@@ -116,6 +93,15 @@ public class QuicConnector extends AbstractNetworkConnector
         commandManager = null;
     }
 
+    public QuicStreamEndPoint createQuicStreamEndPoint(QuicConnection quicConnection, long streamId)
+    {
+        QuicStreamEndPoint endPoint = new QuicStreamEndPoint(getScheduler(), quicConnection, streamId);
+        Connection connection = getDefaultConnectionFactory().newConnection(this, endPoint);
+        endPoint.setConnection(connection);
+        connection.onOpen();
+        return endPoint;
+    }
+
     private void fireTimeoutNotificationIfNeeded()
     {
         boolean timedOut = connections.values().stream().map(QuicConnection::hasQuicConnectionTimedOut).findFirst().orElse(false);
@@ -125,6 +111,29 @@ public class QuicConnector extends AbstractNetworkConnector
             selector.wakeup();
         }
         getScheduler().schedule(this::fireTimeoutNotificationIfNeeded, 100, TimeUnit.MILLISECONDS);
+    }
+
+    private void accept()
+    {
+        String oldName = Thread.currentThread().getName();
+        Thread.currentThread().setName("jetty-quic-acceptor");
+        while (true)
+        {
+            try
+            {
+                selectOnce();
+            }
+            catch (IOException e)
+            {
+                LOG.error("error during selection", e);
+            }
+            catch (InterruptedException e)
+            {
+                LOG.debug("interruption during selection", e);
+                break;
+            }
+        }
+        Thread.currentThread().setName(oldName);
     }
 
     private void selectOnce() throws IOException, InterruptedException
@@ -188,11 +197,6 @@ public class QuicConnector extends AbstractNetworkConnector
         channel.register(selector, SelectionKey.OP_READ | (needWrite ? SelectionKey.OP_WRITE : 0));
     }
 
-    private boolean processWritableKey() throws IOException
-    {
-        return commandManager.processQueue();
-    }
-
     private boolean processReadableKey() throws IOException
     {
         ByteBufferPool bufferPool = getByteBufferPool();
@@ -231,7 +235,8 @@ public class QuicConnector extends AbstractNetworkConnector
         {
             LOG.debug("got packet for an existing connection: " + connectionId + " - buffer: p=" + buffer.position() + " r=" + buffer.remaining());
             // existing connection
-            connection.handlePacket(buffer, (InetSocketAddress)peer, bufferPool);
+            connection.quicRecv(buffer, (InetSocketAddress)peer);
+            bufferPool.release(buffer);
             // Bug? quiche apparently does not send the stream frames after the connection has been closed
             // -> use a mark-as-closed mechanism and first send the data then close
             needWrite = commandManager.quicSend(connection, channel);
@@ -241,13 +246,9 @@ public class QuicConnector extends AbstractNetworkConnector
         return needWrite;
     }
 
-    QuicStreamEndPoint createQuicStreamEndPoint(QuicConnection quicConnection, long streamId)
+    private boolean processWritableKey() throws IOException
     {
-        QuicStreamEndPoint endPoint = new QuicStreamEndPoint(getScheduler(), quicConnection, streamId);
-        Connection connection = getDefaultConnectionFactory().newConnection(this, endPoint);
-        endPoint.setConnection(connection);
-        connection.onOpen();
-        return endPoint;
+        return commandManager.processQueue();
     }
 
     private SocketAddress bindAddress()
