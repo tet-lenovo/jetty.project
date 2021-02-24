@@ -36,7 +36,7 @@ public class QuicConnector extends AbstractNetworkConnector
     private DatagramChannel channel;
     private QuicConfig quicConfig;
 
-    private final Map<QuicConnectionId, QuicEndPointManager> endpoints = new ConcurrentHashMap<>();
+    private final Map<QuicConnectionId, QuicEndPointManager> endpointManagers = new ConcurrentHashMap<>();
     private final Deque<Command> commands = new ArrayDeque<>();
     private final Runnable selection = () ->
     {
@@ -108,8 +108,8 @@ public class QuicConnector extends AbstractNetworkConnector
         if (selector == null)
             return;
 
-        endpoints.values().forEach(QuicEndPointManager::dispose);
-        endpoints.clear();
+        endpointManagers.values().forEach(QuicEndPointManager::dispose);
+        endpointManagers.clear();
         IO.close(channel);
         channel = null;
         IO.close(selector);
@@ -119,7 +119,7 @@ public class QuicConnector extends AbstractNetworkConnector
 
     private void fireTimeoutNotificationIfNeeded()
     {
-        boolean timedOut = endpoints.values().stream().map(QuicEndPointManager::hasQuicConnectionTimedOut).findFirst().orElse(false);
+        boolean timedOut = endpointManagers.values().stream().map(QuicEndPointManager::hasQuicConnectionTimedOut).findFirst().orElse(false);
         if (timedOut)
         {
             LOG.debug("connection timed out, waking up selector");
@@ -168,7 +168,7 @@ public class QuicConnector extends AbstractNetworkConnector
     private void processTimeout() throws IOException
     {
         boolean needWrite = false;
-        Iterator<QuicEndPointManager> it = endpoints.values().iterator();
+        Iterator<QuicEndPointManager> it = endpointManagers.values().iterator();
         while (it.hasNext())
         {
             QuicEndPointManager quicEndPointManager = it.next();
@@ -180,7 +180,7 @@ public class QuicConnector extends AbstractNetworkConnector
                 {
                     quicEndPointManager.close();
                     it.remove();
-                    LOG.debug("connection closed due to timeout; remaining connections: " + endpoints);
+                    LOG.debug("connection closed due to timeout; remaining connections: " + endpointManagers);
                 }
                 QuicTimeoutCommand quicTimeoutCommand = new QuicTimeoutCommand(getByteBufferPool(), quicEndPointManager, channel, closed);
                 if (!quicTimeoutCommand.execute())
@@ -225,8 +225,8 @@ public class QuicConnector extends AbstractNetworkConnector
         buffer.flip();
 
         QuicConnectionId connectionId = QuicConnectionId.fromPacket(buffer);
-        QuicEndPointManager endPoint = endpoints.get(connectionId);
-        if (endPoint == null)
+        QuicEndPointManager endPointManager = endpointManagers.get(connectionId);
+        if (endPointManager == null)
         {
             LOG.debug("got packet for a new connection");
             // new connection
@@ -248,9 +248,9 @@ public class QuicConnector extends AbstractNetworkConnector
             {
                 LOG.debug("new connection accepted");
                 bufferPool.release(newConnectionNegotiationToSend);
-                endPoint = new QuicEndPointManager(acceptedQuicConnection, (InetSocketAddress)channel.getLocalAddress(), (InetSocketAddress)peer, this);
-                endpoints.put(connectionId, endPoint);
-                QuicSendCommand quicSendCommand = new QuicSendCommand(bufferPool, channel, endPoint);
+                endPointManager = new QuicEndPointManager(acceptedQuicConnection, (InetSocketAddress)channel.getLocalAddress(), (InetSocketAddress)peer, this);
+                endpointManagers.put(connectionId, endPointManager);
+                QuicSendCommand quicSendCommand = new QuicSendCommand(bufferPool, channel, endPointManager);
                 if (!quicSendCommand.execute())
                 {
                     commands.offer(quicSendCommand);
@@ -262,16 +262,16 @@ public class QuicConnector extends AbstractNetworkConnector
         {
             LOG.debug("got packet for an existing connection: " + connectionId + " - buffer: p=" + buffer.position() + " r=" + buffer.remaining());
             // existing connection
-            endPoint.handlePacket(buffer, (InetSocketAddress)peer, bufferPool);
-            QuicSendCommand quicSendCommand = new QuicSendCommand(bufferPool, channel, endPoint);
+            endPointManager.handlePacket(buffer, (InetSocketAddress)peer, bufferPool);
+            QuicSendCommand quicSendCommand = new QuicSendCommand(bufferPool, channel, endPointManager);
             if (!quicSendCommand.execute())
             {
                 commands.offer(quicSendCommand);
                 needWrite = true;
             }
-            if (endPoint.isClosed() && endPoint.closeQuicConnection())
+            if (endPointManager.isClosed() && endPointManager.closeQuicConnection())
             {
-                quicSendCommand = new QuicSendCommand(bufferPool, channel, endPoint);
+                quicSendCommand = new QuicSendCommand(bufferPool, channel, endPointManager);
                 if (!quicSendCommand.execute())
                 {
                     commands.offer(quicSendCommand);
