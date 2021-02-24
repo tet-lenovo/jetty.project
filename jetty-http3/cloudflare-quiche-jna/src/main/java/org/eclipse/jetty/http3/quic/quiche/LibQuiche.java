@@ -14,8 +14,10 @@ import org.slf4j.LoggerFactory;
 
 public interface LibQuiche extends Library
 {
-    // TODO detect OS/arch then load the right lib
-    LibQuiche INSTANCE = Native.load("quiche-linux-x86_64", LibQuiche.class);
+    // load the native lib named "quiche-linux-amd64"
+    LibQuiche INSTANCE = Native.load("quiche-" +
+            System.getProperty("os.name").toLowerCase() + "-" + System.getProperty("os.arch").toLowerCase(),
+        LibQuiche.class);
 
     class Logging
     {
