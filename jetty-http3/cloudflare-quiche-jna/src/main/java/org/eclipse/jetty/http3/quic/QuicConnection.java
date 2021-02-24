@@ -434,7 +434,7 @@ public class QuicConnection
         PointerByReference out = new PointerByReference();
         size_t_pointer outLen = new size_t_pointer();
         INSTANCE.quiche_conn_application_proto(quicheConn, out, outLen);
-        return new String(out.getValue().getByteArray(0, (int)outLen.getValue()), StandardCharsets.US_ASCII);
+        return new String(out.getValue().getByteArray(0, (int)outLen.getValue()), StandardCharsets.UTF_8);
     }
 
     public String statistics()

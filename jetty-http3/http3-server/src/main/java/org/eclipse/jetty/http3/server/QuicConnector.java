@@ -247,7 +247,7 @@ public class QuicConnector extends AbstractNetworkConnector
             }
             else
             {
-                LOG.debug("new connection accepted with protocol '{}'", acceptedQuicConnection.getNegotiatedProtocol());
+                LOG.debug("new connection accepted");
                 bufferPool.release(newConnectionNegotiationToSend);
                 endPoint = new QuicEndPoint(getScheduler(), acceptedQuicConnection, channel.getLocalAddress(), peer, this);
                 endpoints.put(connectionId, endPoint);

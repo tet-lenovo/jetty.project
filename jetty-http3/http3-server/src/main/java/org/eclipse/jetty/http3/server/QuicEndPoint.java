@@ -67,10 +67,15 @@ public class QuicEndPoint extends AbstractEndPoint
     {
         LOG.debug("handling packet " + BufferUtil.toDetailString(buffer));
         lastPeer = peer;
+
+        boolean establishedBefore = quicConnection.isConnectionEstablished();
         quicConnection.recv(buffer);
         bufferPool.release(buffer);
+        boolean establishedAfter = quicConnection.isConnectionEstablished();
+        if (!establishedBefore && establishedAfter)
+            LOG.debug("newly established connection, negotiated ALPN protocol : {}", quicConnection.getNegotiatedProtocol());
 
-        if (quicConnection.isConnectionEstablished())
+        if (establishedAfter)
         {
             Iterator<QuicStream> it = quicConnection.readableStreamsIterator();
             while (it.hasNext())
