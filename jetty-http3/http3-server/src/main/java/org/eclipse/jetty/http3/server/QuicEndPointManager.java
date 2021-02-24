@@ -18,7 +18,7 @@ import org.slf4j.LoggerFactory;
 
 public class QuicEndPointManager
 {
-    protected static final Logger LOG = LoggerFactory.getLogger(QuicEndPointManager.class);
+    private static final Logger LOG = LoggerFactory.getLogger(QuicEndPointManager.class);
 
     private final QuicConnector quicConnector;
     private final QuicConnection quicConnection;
@@ -27,7 +27,7 @@ public class QuicEndPointManager
     private volatile InetSocketAddress remoteAddress;
     private volatile long registrationTsInNs;
     private volatile long timeoutInNs;
-    private volatile boolean closed;
+    private volatile boolean markedClosed;
 
     protected QuicEndPointManager(QuicConnection quicConnection, InetSocketAddress localAddress, InetSocketAddress remoteAddress, QuicConnector quicConnector)
     {
@@ -108,17 +108,17 @@ public class QuicEndPointManager
     {
         streamEndpoints.remove(streamId);
         if (streamEndpoints.isEmpty())
-            close();
+            markClosed();
     }
 
-    public boolean isClosed()
+    public boolean isMarkedClosed()
     {
-        return closed;
+        return markedClosed;
     }
 
-    public void close()
+    public void markClosed()
     {
-        closed = true;
+        markedClosed = true;
     }
 
     public boolean closeQuicConnection() throws IOException

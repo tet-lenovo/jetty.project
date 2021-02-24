@@ -7,13 +7,10 @@ import java.nio.ByteBuffer;
 import java.nio.channels.DatagramChannel;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
-import java.util.ArrayDeque;
-import java.util.Deque;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
-import java.util.function.LongConsumer;
 
 import org.eclipse.jetty.http3.quic.QuicConfig;
 import org.eclipse.jetty.http3.quic.QuicConnection;
@@ -35,9 +32,9 @@ public class QuicConnector extends AbstractNetworkConnector
     private Selector selector;
     private DatagramChannel channel;
     private QuicConfig quicConfig;
+    private CommandManager commandManager;
 
     private final Map<QuicConnectionId, QuicEndPointManager> endpointManagers = new ConcurrentHashMap<>();
-    private final Deque<Command> commands = new ArrayDeque<>();
     private final Runnable selection = () ->
     {
         String oldName = Thread.currentThread().getName();
@@ -73,6 +70,7 @@ public class QuicConnector extends AbstractNetworkConnector
         super.doStart();
         getScheduler().schedule(this::fireTimeoutNotificationIfNeeded, 100, TimeUnit.MILLISECONDS);
         getExecutor().execute(selection);
+        commandManager = new CommandManager(getByteBufferPool());
     }
 
     @Override
@@ -115,6 +113,7 @@ public class QuicConnector extends AbstractNetworkConnector
         IO.close(selector);
         selector = null;
         quicConfig = null;
+        commandManager = null;
     }
 
     private void fireTimeoutNotificationIfNeeded()
@@ -178,16 +177,11 @@ public class QuicConnector extends AbstractNetworkConnector
                 boolean closed = quicEndPointManager.isQuicConnectionClosed();
                 if (closed)
                 {
-                    quicEndPointManager.close();
+                    quicEndPointManager.markClosed();
                     it.remove();
                     LOG.debug("connection closed due to timeout; remaining connections: " + endpointManagers);
                 }
-                QuicTimeoutCommand quicTimeoutCommand = new QuicTimeoutCommand(getByteBufferPool(), quicEndPointManager, channel, closed);
-                if (!quicTimeoutCommand.execute())
-                {
-                    commands.offer(quicTimeoutCommand);
-                    needWrite = true;
-                }
+                needWrite = commandManager.quicTimeout(quicEndPointManager, channel, closed);
             }
         }
         //TODO: re-registering might leak some memory, check that
@@ -196,27 +190,11 @@ public class QuicConnector extends AbstractNetworkConnector
 
     private boolean processWritableKey() throws IOException
     {
-        boolean needWrite = false;
-        LOG.debug("key is writable, commands = " + commands);
-        while (!commands.isEmpty())
-        {
-            Command command = commands.poll();
-            LOG.debug("executing command " + command);
-            boolean finished = command.execute();
-            LOG.debug("executed command; finished? " + finished);
-            if (!finished)
-            {
-                commands.offer(command);
-                needWrite = true;
-                break;
-            }
-        }
-        return needWrite;
+        return commandManager.processQueue();
     }
 
     private boolean processReadableKey() throws IOException
     {
-        boolean needWrite = false;
         ByteBufferPool bufferPool = getByteBufferPool();
 
         ByteBuffer buffer = bufferPool.acquire(LibQuiche.QUICHE_MIN_CLIENT_INITIAL_LEN, true);
@@ -226,6 +204,7 @@ public class QuicConnector extends AbstractNetworkConnector
 
         QuicConnectionId connectionId = QuicConnectionId.fromPacket(buffer);
         QuicEndPointManager endPointManager = endpointManagers.get(connectionId);
+        boolean needWrite;
         if (endPointManager == null)
         {
             LOG.debug("got packet for a new connection");
@@ -237,12 +216,7 @@ public class QuicConnector extends AbstractNetworkConnector
             if (acceptedQuicConnection == null)
             {
                 LOG.debug("new connection negotiation");
-                ChannelWriteCommand channelWriteCommand = new ChannelWriteCommand(bufferPool, newConnectionNegotiationToSend, channel, peer);
-                if (!channelWriteCommand.execute())
-                {
-                    commands.offer(channelWriteCommand);
-                    needWrite = true;
-                }
+                needWrite = commandManager.channelWrite(newConnectionNegotiationToSend, channel, peer);
             }
             else
             {
@@ -250,12 +224,7 @@ public class QuicConnector extends AbstractNetworkConnector
                 bufferPool.release(newConnectionNegotiationToSend);
                 endPointManager = new QuicEndPointManager(acceptedQuicConnection, (InetSocketAddress)channel.getLocalAddress(), (InetSocketAddress)peer, this);
                 endpointManagers.put(connectionId, endPointManager);
-                QuicSendCommand quicSendCommand = new QuicSendCommand(bufferPool, channel, endPointManager);
-                if (!quicSendCommand.execute())
-                {
-                    commands.offer(quicSendCommand);
-                    needWrite = true;
-                }
+                needWrite = commandManager.quicSend(channel, endPointManager);
             }
         }
         else
@@ -263,21 +232,11 @@ public class QuicConnector extends AbstractNetworkConnector
             LOG.debug("got packet for an existing connection: " + connectionId + " - buffer: p=" + buffer.position() + " r=" + buffer.remaining());
             // existing connection
             endPointManager.handlePacket(buffer, (InetSocketAddress)peer, bufferPool);
-            QuicSendCommand quicSendCommand = new QuicSendCommand(bufferPool, channel, endPointManager);
-            if (!quicSendCommand.execute())
-            {
-                commands.offer(quicSendCommand);
-                needWrite = true;
-            }
-            if (endPointManager.isClosed() && endPointManager.closeQuicConnection())
-            {
-                quicSendCommand = new QuicSendCommand(bufferPool, channel, endPointManager);
-                if (!quicSendCommand.execute())
-                {
-                    commands.offer(quicSendCommand);
-                    needWrite = true;
-                }
-            }
+            // Bug? quiche apparently does not send the stream frames after the connection has been closed
+            // -> use a mark-as-closed mechanism and first send the data then close
+            needWrite = commandManager.quicSend(channel, endPointManager);
+            if (endPointManager.isMarkedClosed() && endPointManager.closeQuicConnection())
+                needWrite |= commandManager.quicSend(channel, endPointManager);
         }
         return needWrite;
     }
@@ -319,149 +278,5 @@ public class QuicConnector extends AbstractNetworkConnector
     protected void accept(int acceptorID)
     {
         throw new UnsupportedOperationException(getClass().getSimpleName() + " has its own accepting mechanism");
-    }
-
-
-
-    private interface Command
-    {
-        boolean execute() throws IOException;
-    }
-
-    private static class QuicTimeoutCommand implements Command
-    {
-        private final QuicSendCommand quicSendCommand;
-        private final boolean close;
-        private boolean timeoutCalled;
-
-        public QuicTimeoutCommand(ByteBufferPool bufferPool, QuicEndPointManager quicEndPointManager, DatagramChannel channel, boolean close)
-        {
-            this.close = close;
-            this.quicSendCommand = new QuicSendCommand("timeout", bufferPool, channel, quicEndPointManager);
-        }
-
-        @Override
-        public boolean execute() throws IOException
-        {
-            if (!timeoutCalled)
-            {
-                LOG.debug("notifying quiche of timeout");
-                quicSendCommand.quicConnection.onTimeout();
-                timeoutCalled = true;
-            }
-            boolean written = quicSendCommand.execute();
-            if (!written)
-                return false;
-            if (close)
-            {
-                LOG.debug("disposing of quiche connection");
-                quicSendCommand.quicConnection.dispose();
-            }
-            return true;
-        }
-    }
-
-    private static class QuicSendCommand implements Command
-    {
-        private final String cmdName;
-        private final ByteBufferPool bufferPool;
-        private final QuicConnection quicConnection;
-        private final DatagramChannel channel;
-        private final SocketAddress peer;
-        private final LongConsumer timeoutConsumer;
-
-        private ByteBuffer buffer;
-
-        public QuicSendCommand(ByteBufferPool bufferPool, DatagramChannel channel, QuicEndPointManager quicEndPointManager)
-        {
-            this("send", bufferPool, channel, quicEndPointManager);
-        }
-
-        private QuicSendCommand(String cmdName, ByteBufferPool bufferPool, DatagramChannel channel, QuicEndPointManager quicEndPointManager)
-        {
-            this.cmdName = cmdName;
-            this.bufferPool = bufferPool;
-            this.quicConnection = quicEndPointManager.getQuicConnection();
-            this.channel = channel;
-            this.peer = quicEndPointManager.getRemoteAddress();
-            this.timeoutConsumer = quicEndPointManager.getTimeoutSetter();
-        }
-
-        @Override
-        public boolean execute() throws IOException
-        {
-            LOG.debug("executing {} command", cmdName);
-            if (buffer != null)
-            {
-                int channelSent = channel.send(buffer, peer);
-                LOG.debug("resuming sending to channel made it send {} bytes", channelSent);
-                if (channelSent == 0)
-                {
-                    LOG.debug("executed {} command; channel sending(1) could not be done", cmdName);
-                    return false;
-                }
-                buffer.clear();
-            }
-            else
-            {
-                LOG.debug("fresh command execution");
-                buffer = bufferPool.acquire(LibQuiche.QUICHE_MIN_CLIENT_INITIAL_LEN, true);
-                BufferUtil.flipToFill(buffer);
-            }
-
-            while (true)
-            {
-                int quicSent = quicConnection.send(buffer);
-                timeoutConsumer.accept(quicConnection.nextTimeout());
-                if (quicSent == 0)
-                {
-                    LOG.debug("executed {} command; all done", cmdName);
-                    bufferPool.release(buffer);
-                    buffer = null;
-                    return true;
-                }
-                LOG.debug("quiche wants to send {} bytes", quicSent);
-                buffer.flip();
-                int channelSent = channel.send(buffer, peer);
-                LOG.debug("channel sent {} bytes", channelSent);
-                if (channelSent == 0)
-                {
-                    LOG.debug("executed {} command; channel sending(2) could not be done", cmdName);
-                    return false;
-                }
-                buffer.clear();
-            }
-        }
-    }
-
-    private static class ChannelWriteCommand implements Command
-    {
-        private final ByteBufferPool bufferPool;
-        private final ByteBuffer buffer;
-        private final DatagramChannel channel;
-        private final SocketAddress peer;
-
-        private ChannelWriteCommand(ByteBufferPool bufferPool, ByteBuffer buffer, DatagramChannel channel, SocketAddress peer)
-        {
-            this.bufferPool = bufferPool;
-            this.buffer = buffer;
-            this.channel = channel;
-            this.peer = peer;
-        }
-
-        @Override
-        public boolean execute() throws IOException
-        {
-            LOG.debug("executing channel write command");
-            int sent = channel.send(buffer, peer);
-            if (sent == 0)
-            {
-                LOG.debug("executed channel write command; channel sending could not be done");
-                return false;
-            }
-            bufferPool.release(buffer);
-            LOG.debug("executed channel write command; all done");
-            return true;
-        }
     }
 }
