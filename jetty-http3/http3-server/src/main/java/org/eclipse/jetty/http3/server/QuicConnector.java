@@ -213,19 +213,28 @@ public class QuicConnector extends AbstractNetworkConnector
         {
             LOG.debug("got packet for a new connection");
             // new connection
-            ByteBuffer newConnectionNegotiationToSend = bufferPool.acquire(LibQuiche.QUICHE_MIN_CLIENT_INITIAL_LEN, true);
-            BufferUtil.flipToFill(newConnectionNegotiationToSend);
-            QuicheConnection acceptedQuicheConnection = QuicheConnection.tryAccept(quicheConfig, peer, buffer, newConnectionNegotiationToSend);
-            bufferPool.release(buffer);
+            QuicheConnection acceptedQuicheConnection = QuicheConnection.tryAccept(quicheConfig, peer, buffer);
             if (acceptedQuicheConnection == null)
             {
                 LOG.debug("new connection negotiation");
-                needWrite = commandManager.channelWrite(channel, newConnectionNegotiationToSend, peer);
+                ByteBuffer negociationBuffer = bufferPool.acquire(LibQuiche.QUICHE_MIN_CLIENT_INITIAL_LEN, true);
+                BufferUtil.flipToFill(negociationBuffer);
+                if (QuicheConnection.negociate(peer, buffer, negociationBuffer))
+                {
+                    bufferPool.release(buffer);
+                    needWrite = commandManager.channelWrite(channel, negociationBuffer, peer);
+                }
+                else
+                {
+                    bufferPool.release(buffer);
+                    bufferPool.release(negociationBuffer);
+                    needWrite = false;
+                }
             }
             else
             {
                 LOG.debug("new connection accepted");
-                bufferPool.release(newConnectionNegotiationToSend);
+                bufferPool.release(buffer);
                 connection = new QuicConnection(acceptedQuicheConnection, (InetSocketAddress)channel.getLocalAddress(), (InetSocketAddress)peer, this);
                 connections.put(connectionId, connection);
                 needWrite = commandManager.quicSend(connection, channel);

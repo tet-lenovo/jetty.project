@@ -4,6 +4,11 @@ import org.eclipse.jetty.http3.quic.quiche.LibQuiche;
 
 public class QuicheConfig
 {
+    static
+    {
+        LibQuiche.Logging.enable();
+    }
+
     public enum CongestionControl
     {
         RENO(LibQuiche.quiche_cc_algorithm.QUICHE_CC_RENO),

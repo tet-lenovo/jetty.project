@@ -5,6 +5,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Objects;
 
+import org.eclipse.jetty.http3.quic.quiche.LibQuiche;
 import org.eclipse.jetty.http3.quic.quiche.size_t;
 import org.eclipse.jetty.http3.quic.quiche.size_t_pointer;
 import org.eclipse.jetty.http3.quic.quiche.uint32_t_pointer;
@@ -16,6 +17,11 @@ import static org.eclipse.jetty.http3.quic.quiche.LibQuiche.QUICHE_MAX_CONN_ID_L
 public class QuicheConnectionId
 {
     private static final byte[] HEX_ARRAY = "0123456789abcdef".getBytes(StandardCharsets.US_ASCII);
+
+    static
+    {
+        LibQuiche.Logging.enable();
+    }
 
     private final byte[] dcid;
     private final int hashCode;

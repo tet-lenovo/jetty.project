@@ -32,6 +32,8 @@ import static org.eclipse.jetty.http3.quic.quiche.LibQuiche.quiche_error.errToSt
 public class QuicheConnection
 {
     private static final Logger LOGGER = LoggerFactory.getLogger(QuicheConnection.class);
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
+
     static
     {
         LibQuiche.Logging.enable();
@@ -53,7 +55,7 @@ public class QuicheConnection
         if (connectionIdLength > LibQuiche.QUICHE_MAX_CONN_ID_LEN)
             throw new IOException("Connection ID length is too large: " + connectionIdLength + " > " + LibQuiche.QUICHE_MAX_CONN_ID_LEN);
         byte[] scid = new byte[connectionIdLength];
-        new SecureRandom().nextBytes(scid);
+        SECURE_RANDOM.nextBytes(scid);
         LibQuiche.quiche_config quicheConfig = buildConfig(quicConfig);
         LibQuiche.quiche_conn quicheConn = INSTANCE.quiche_connect(peer.getHostName(), scid, new size_t(scid.length), quicheConfig);
         return new QuicheConnection(quicheConn, quicheConfig, null);
@@ -158,7 +160,7 @@ public class QuicheConnection
         return type.getValue();
     }
 
-    public static QuicheConnection tryAccept(QuicheConfig quicConfig, SocketAddress peer, ByteBuffer packetRead, ByteBuffer packetToSend) throws IOException
+    public static boolean negociate(SocketAddress peer, ByteBuffer packetRead, ByteBuffer packetToSend) throws IOException
     {
         uint8_t_pointer type = new uint8_t_pointer();
         uint32_t_pointer version = new uint32_t_pointer();
@@ -197,7 +199,7 @@ public class QuicheConnection
             packetToSend.limit(generated.intValue());
             if (generated.intValue() < 0)
                 throw new IOException("failed to create vneg packet : " + generated);
-            return null;
+            return true;
         }
 
         if (token_len.getValue() == 0)
@@ -207,7 +209,7 @@ public class QuicheConnection
             token = mintToken(dcid, (int)dcid_len.getValue(), peer);
 
             byte[] newCid = new byte[QUICHE_MAX_CONN_ID_LEN];
-            gen_cid(new SecureRandom(), newCid);
+            gen_cid(SECURE_RANDOM, newCid);
 
             ssize_t generated = INSTANCE.quiche_retry(scid, scid_len.getPointee(),
                 dcid, dcid_len.getPointee(),
@@ -219,6 +221,55 @@ public class QuicheConnection
             packetToSend.limit(generated.intValue());
             if (generated.intValue() < 0)
                 throw new IOException("failed to create retry packet: " + LibQuiche.quiche_error.errToString(generated.intValue()));
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Only consume the {@code packetRead} if the connection was accepted.
+     */
+    public static QuicheConnection tryAccept(QuicheConfig quicConfig, SocketAddress peer, ByteBuffer packetRead) throws IOException
+    {
+        uint8_t_pointer type = new uint8_t_pointer();
+        uint32_t_pointer version = new uint32_t_pointer();
+
+        // Source Connection ID
+        byte[] scid = new byte[QUICHE_MAX_CONN_ID_LEN];
+        size_t_pointer scid_len = new size_t_pointer(scid.length);
+
+        // Destination Connection ID
+        byte[] dcid = new byte[QUICHE_MAX_CONN_ID_LEN];
+        size_t_pointer dcid_len = new size_t_pointer(dcid.length);
+
+        byte[] token = new byte[32];
+        size_t_pointer token_len = new size_t_pointer(token.length);
+
+        LOGGER.debug("  getting header info...");
+        int rc = INSTANCE.quiche_header_info(packetRead, new size_t(packetRead.remaining()), new size_t(QUICHE_MAX_CONN_ID_LEN),
+            version, type,
+            scid, scid_len,
+            dcid, dcid_len,
+            token, token_len);
+        if (rc < 0)
+            throw new IOException("failed to parse header: " + LibQuiche.quiche_error.errToString(rc));
+
+        LOGGER.debug("version: " + version);
+        LOGGER.debug("type: " + type);
+        LOGGER.debug("scid len: " + scid_len);
+        LOGGER.debug("dcid len: " + dcid_len);
+        LOGGER.debug("token len: " + token_len);
+
+        if (!INSTANCE.quiche_version_is_supported(version.getPointee()))
+        {
+            LOGGER.debug("  < need version negotiation");
+            return null;
+        }
+
+        if (token_len.getValue() == 0)
+        {
+            LOGGER.debug("  < need stateless retry");
             return null;
         }
 

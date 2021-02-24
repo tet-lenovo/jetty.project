@@ -16,6 +16,11 @@ public class QuicheStream
 {
     private static final Logger LOGGER = LoggerFactory.getLogger(QuicheStream.class);
 
+    static
+    {
+        LibQuiche.Logging.enable();
+    }
+
     private final LibQuiche.quiche_conn quicheConn;
     private final long streamId;
     private boolean receivedFin;
