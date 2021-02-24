@@ -12,15 +12,15 @@ import org.slf4j.LoggerFactory;
 
 import static org.eclipse.jetty.http3.quic.quiche.LibQuiche.INSTANCE;
 
-public class QuicStream
+public class QuicheStream
 {
-    private static final Logger LOGGER = LoggerFactory.getLogger(QuicStream.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(QuicheStream.class);
 
     private final LibQuiche.quiche_conn quicheConn;
     private final long streamId;
     private boolean receivedFin;
 
-    QuicStream(LibQuiche.quiche_conn quicheConn, long streamId)
+    QuicheStream(LibQuiche.quiche_conn quicheConn, long streamId)
     {
         this.quicheConn = quicheConn;
         this.streamId = streamId;

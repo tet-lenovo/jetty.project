@@ -29,9 +29,9 @@ import static org.eclipse.jetty.http3.quic.quiche.LibQuiche.QUICHE_MAX_CONN_ID_L
 import static org.eclipse.jetty.http3.quic.quiche.LibQuiche.quiche_error.QUICHE_ERR_DONE;
 import static org.eclipse.jetty.http3.quic.quiche.LibQuiche.quiche_error.errToString;
 
-public class QuicConnection
+public class QuicheConnection
 {
-    private static final Logger LOGGER = LoggerFactory.getLogger(QuicConnection.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(QuicheConnection.class);
     static
     {
         LibQuiche.Logging.enable();
@@ -39,16 +39,16 @@ public class QuicConnection
 
     private LibQuiche.quiche_conn quicheConn;
     private LibQuiche.quiche_config quicheConfig;
-    private QuicConnectionId quicConnectionId;
+    private QuicheConnectionId quicheConnectionId;
 
-    private QuicConnection(LibQuiche.quiche_conn quicheConn, LibQuiche.quiche_config quicheConfig, QuicConnectionId quicConnectionId)
+    private QuicheConnection(LibQuiche.quiche_conn quicheConn, LibQuiche.quiche_config quicheConfig, QuicheConnectionId quicheConnectionId)
     {
         this.quicheConn = quicheConn;
         this.quicheConfig = quicheConfig;
-        this.quicConnectionId = quicConnectionId;
+        this.quicheConnectionId = quicheConnectionId;
     }
 
-    public static QuicConnection connect(QuicConfig quicConfig, InetSocketAddress peer, int connectionIdLength) throws IOException
+    public static QuicheConnection connect(QuicheConfig quicConfig, InetSocketAddress peer, int connectionIdLength) throws IOException
     {
         if (connectionIdLength > LibQuiche.QUICHE_MAX_CONN_ID_LEN)
             throw new IOException("Connection ID length is too large: " + connectionIdLength + " > " + LibQuiche.QUICHE_MAX_CONN_ID_LEN);
@@ -56,10 +56,10 @@ public class QuicConnection
         new SecureRandom().nextBytes(scid);
         LibQuiche.quiche_config quicheConfig = buildConfig(quicConfig);
         LibQuiche.quiche_conn quicheConn = INSTANCE.quiche_connect(peer.getHostName(), scid, new size_t(scid.length), quicheConfig);
-        return new QuicConnection(quicheConn, quicheConfig, null);
+        return new QuicheConnection(quicheConn, quicheConfig, null);
     }
 
-    private static LibQuiche.quiche_config buildConfig(QuicConfig config) throws IOException
+    private static LibQuiche.quiche_config buildConfig(QuicheConfig config) throws IOException
     {
         LibQuiche.quiche_config quicheConfig = INSTANCE.quiche_config_new(new uint32_t(config.getVersion()));
         if (quicheConfig == null)
@@ -87,7 +87,7 @@ public class QuicConnection
             INSTANCE.quiche_config_set_application_protos(quicheConfig, theProtos, new size_t(theProtos.length()));
         }
 
-        QuicConfig.CongestionControl cc = config.getCongestionControl();
+        QuicheConfig.CongestionControl cc = config.getCongestionControl();
         if (cc != null)
             INSTANCE.quiche_config_set_cc_algorithm(quicheConfig, cc.getValue());
 
@@ -158,7 +158,7 @@ public class QuicConnection
         return type.getValue();
     }
 
-    public static QuicConnection tryAccept(QuicConfig quicConfig, SocketAddress peer, ByteBuffer packetRead, ByteBuffer packetToSend) throws IOException
+    public static QuicheConnection tryAccept(QuicheConfig quicConfig, SocketAddress peer, ByteBuffer packetRead, ByteBuffer packetToSend) throws IOException
     {
         uint8_t_pointer type = new uint8_t_pointer();
         uint32_t_pointer version = new uint32_t_pointer();
@@ -239,10 +239,10 @@ public class QuicConnection
         }
 
         LOGGER.debug("  < connection created");
-        QuicConnection quicConnection = new QuicConnection(quicheConn, quicheConfig, QuicConnectionId.fromCid(dcid, dcid_len));
-        quicConnection.recv(packetRead);
+        QuicheConnection quicheConnection = new QuicheConnection(quicheConn, quicheConfig, QuicheConnectionId.fromCid(dcid, dcid_len));
+        quicheConnection.recv(packetRead);
         LOGGER.debug("accepted, immediately receiving the same packet - remaining in buffer: {}", packetRead.remaining());
-        return quicConnection;
+        return quicheConnection;
     }
 
     private static byte[] validateToken(byte[] token, int tokenLength, SocketAddress peer)
@@ -305,22 +305,22 @@ public class QuicConnection
         return token.array();
     }
 
-    public QuicConnectionId getQuicConnectionId()
+    public QuicheConnectionId getQuicConnectionId()
     {
-        return quicConnectionId;
+        return quicheConnectionId;
     }
 
-    public Iterator<QuicStream> readableStreamsIterator()
+    public Iterator<QuicheStream> readableStreamsIterator()
     {
         return new StreamIterator(quicheConn, false);
     }
 
-    public Iterator<QuicStream> writableStreamsIterator()
+    public Iterator<QuicheStream> writableStreamsIterator()
     {
         return new StreamIterator(quicheConn, true);
     }
 
-    static class StreamIterator implements Iterator<QuicStream>
+    static class StreamIterator implements Iterator<QuicheStream>
     {
         private static final Logger LOGGER = LoggerFactory.getLogger(StreamIterator.class);
 
@@ -359,10 +359,10 @@ public class QuicConnection
         }
 
         @Override
-        public QuicStream next()
+        public QuicheStream next()
         {
             Long streamId = streamIdIterator.next();
-            return new QuicStream(quicheConn, streamId);
+            return new QuicheStream(quicheConn, streamId);
         }
     }
 
@@ -462,7 +462,7 @@ public class QuicConnection
             INSTANCE.quiche_config_free(quicheConfig);
             quicheConfig = null;
         }
-        quicConnectionId = null;
+        quicheConnectionId = null;
     }
 
     public boolean isDraining()

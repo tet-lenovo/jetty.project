@@ -2,7 +2,7 @@ package org.eclipse.jetty.http3.quic;
 
 import org.eclipse.jetty.http3.quic.quiche.LibQuiche;
 
-public class QuicConfig
+public class QuicheConfig
 {
     public enum CongestionControl
     {
@@ -36,7 +36,7 @@ public class QuicConfig
     private Long initialMaxStreamsUni;
     private Boolean disableActiveMigration;
 
-    public QuicConfig()
+    public QuicheConfig()
     {
     }
 

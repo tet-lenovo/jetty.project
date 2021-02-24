@@ -12,9 +12,9 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
-import org.eclipse.jetty.http3.quic.QuicConfig;
-import org.eclipse.jetty.http3.quic.QuicConnection;
-import org.eclipse.jetty.http3.quic.QuicConnectionId;
+import org.eclipse.jetty.http3.quic.QuicheConfig;
+import org.eclipse.jetty.http3.quic.QuicheConnection;
+import org.eclipse.jetty.http3.quic.QuicheConnectionId;
 import org.eclipse.jetty.http3.quic.quiche.LibQuiche;
 import org.eclipse.jetty.io.ByteBufferPool;
 import org.eclipse.jetty.io.Connection;
@@ -31,10 +31,10 @@ public class QuicConnector extends AbstractNetworkConnector
 
     private Selector selector;
     private DatagramChannel channel;
-    private QuicConfig quicConfig;
+    private QuicheConfig quicheConfig;
     private CommandManager commandManager;
 
-    private final Map<QuicConnectionId, QuicEndPointManager> endpointManagers = new ConcurrentHashMap<>();
+    private final Map<QuicheConnectionId, QuicConnection> endpointManagers = new ConcurrentHashMap<>();
     private final Runnable selection = () ->
     {
         String oldName = Thread.currentThread().getName();
@@ -79,19 +79,19 @@ public class QuicConnector extends AbstractNetworkConnector
         if (selector != null)
             return;
 
-        quicConfig = new QuicConfig();
-        quicConfig.setMaxIdleTimeout(5000L);
-        quicConfig.setInitialMaxData(10000000L);
-        quicConfig.setInitialMaxStreamDataBidiLocal(10000000L);
-        quicConfig.setInitialMaxStreamDataBidiRemote(10000000L);
-        quicConfig.setInitialMaxStreamDataUni(10000000L);
-        quicConfig.setInitialMaxStreamsBidi(100L);
-        quicConfig.setCongestionControl(QuicConfig.CongestionControl.RENO);
-        quicConfig.setCertChainPemPath("./src/test/resources/cert.crt");
-        quicConfig.setPrivKeyPemPath("./src/test/resources/cert.key");
-        quicConfig.setVerifyPeer(false);
+        quicheConfig = new QuicheConfig();
+        quicheConfig.setMaxIdleTimeout(5000L);
+        quicheConfig.setInitialMaxData(10000000L);
+        quicheConfig.setInitialMaxStreamDataBidiLocal(10000000L);
+        quicheConfig.setInitialMaxStreamDataBidiRemote(10000000L);
+        quicheConfig.setInitialMaxStreamDataUni(10000000L);
+        quicheConfig.setInitialMaxStreamsBidi(100L);
+        quicheConfig.setCongestionControl(QuicheConfig.CongestionControl.RENO);
+        quicheConfig.setCertChainPemPath("./src/test/resources/cert.crt");
+        quicheConfig.setPrivKeyPemPath("./src/test/resources/cert.key");
+        quicheConfig.setVerifyPeer(false);
 //        quicConfig.setApplicationProtos(getProtocols().toArray(new String[0]));
-        quicConfig.setApplicationProtos("http/0.9");  // enable HTTP/0.9
+        quicheConfig.setApplicationProtos("http/0.9");  // enable HTTP/0.9
 
         this.selector = Selector.open();
         this.channel = DatagramChannel.open();
@@ -106,19 +106,19 @@ public class QuicConnector extends AbstractNetworkConnector
         if (selector == null)
             return;
 
-        endpointManagers.values().forEach(QuicEndPointManager::dispose);
+        endpointManagers.values().forEach(QuicConnection::dispose);
         endpointManagers.clear();
         IO.close(channel);
         channel = null;
         IO.close(selector);
         selector = null;
-        quicConfig = null;
+        quicheConfig = null;
         commandManager = null;
     }
 
     private void fireTimeoutNotificationIfNeeded()
     {
-        boolean timedOut = endpointManagers.values().stream().map(QuicEndPointManager::hasQuicConnectionTimedOut).findFirst().orElse(false);
+        boolean timedOut = endpointManagers.values().stream().map(QuicConnection::hasQuicConnectionTimedOut).findFirst().orElse(false);
         if (timedOut)
         {
             LOG.debug("connection timed out, waking up selector");
@@ -167,21 +167,21 @@ public class QuicConnector extends AbstractNetworkConnector
     private void processTimeout() throws IOException
     {
         boolean needWrite = false;
-        Iterator<QuicEndPointManager> it = endpointManagers.values().iterator();
+        Iterator<QuicConnection> it = endpointManagers.values().iterator();
         while (it.hasNext())
         {
-            QuicEndPointManager quicEndPointManager = it.next();
-            if (quicEndPointManager.hasQuicConnectionTimedOut())
+            QuicConnection quicConnection = it.next();
+            if (quicConnection.hasQuicConnectionTimedOut())
             {
-                LOG.debug("connection has timed out: " + quicEndPointManager);
-                boolean closed = quicEndPointManager.isQuicConnectionClosed();
+                LOG.debug("connection has timed out: " + quicConnection);
+                boolean closed = quicConnection.isQuicConnectionClosed();
                 if (closed)
                 {
-                    quicEndPointManager.markClosed();
+                    quicConnection.markClosed();
                     it.remove();
                     LOG.debug("connection closed due to timeout; remaining connections: " + endpointManagers);
                 }
-                needWrite = commandManager.quicTimeout(quicEndPointManager, channel, closed);
+                needWrite = commandManager.quicTimeout(quicConnection, channel, closed);
             }
         }
         //TODO: re-registering might leak some memory, check that
@@ -202,8 +202,8 @@ public class QuicConnector extends AbstractNetworkConnector
         SocketAddress peer = channel.receive(buffer);
         buffer.flip();
 
-        QuicConnectionId connectionId = QuicConnectionId.fromPacket(buffer);
-        QuicEndPointManager endPointManager = endpointManagers.get(connectionId);
+        QuicheConnectionId connectionId = QuicheConnectionId.fromPacket(buffer);
+        QuicConnection endPointManager = endpointManagers.get(connectionId);
         boolean needWrite;
         if (endPointManager == null)
         {
@@ -211,9 +211,9 @@ public class QuicConnector extends AbstractNetworkConnector
             // new connection
             ByteBuffer newConnectionNegotiationToSend = bufferPool.acquire(LibQuiche.QUICHE_MIN_CLIENT_INITIAL_LEN, true);
             BufferUtil.flipToFill(newConnectionNegotiationToSend);
-            QuicConnection acceptedQuicConnection = QuicConnection.tryAccept(quicConfig, peer, buffer, newConnectionNegotiationToSend);
+            QuicheConnection acceptedQuicheConnection = QuicheConnection.tryAccept(quicheConfig, peer, buffer, newConnectionNegotiationToSend);
             bufferPool.release(buffer);
-            if (acceptedQuicConnection == null)
+            if (acceptedQuicheConnection == null)
             {
                 LOG.debug("new connection negotiation");
                 needWrite = commandManager.channelWrite(newConnectionNegotiationToSend, channel, peer);
@@ -222,7 +222,7 @@ public class QuicConnector extends AbstractNetworkConnector
             {
                 LOG.debug("new connection accepted");
                 bufferPool.release(newConnectionNegotiationToSend);
-                endPointManager = new QuicEndPointManager(acceptedQuicConnection, (InetSocketAddress)channel.getLocalAddress(), (InetSocketAddress)peer, this);
+                endPointManager = new QuicConnection(acceptedQuicheConnection, (InetSocketAddress)channel.getLocalAddress(), (InetSocketAddress)peer, this);
                 endpointManagers.put(connectionId, endPointManager);
                 needWrite = commandManager.quicSend(channel, endPointManager);
             }
@@ -241,9 +241,9 @@ public class QuicConnector extends AbstractNetworkConnector
         return needWrite;
     }
 
-    QuicStreamEndPoint createQuicStreamEndPoint(QuicEndPointManager quicEndPointManager, long streamId)
+    QuicStreamEndPoint createQuicStreamEndPoint(QuicConnection quicConnection, long streamId)
     {
-        QuicStreamEndPoint endPoint = new QuicStreamEndPoint(getScheduler(), quicEndPointManager, streamId);
+        QuicStreamEndPoint endPoint = new QuicStreamEndPoint(getScheduler(), quicConnection, streamId);
         Connection connection = getDefaultConnectionFactory().newConnection(this, endPoint);
         endPoint.setConnection(connection);
         connection.onOpen();

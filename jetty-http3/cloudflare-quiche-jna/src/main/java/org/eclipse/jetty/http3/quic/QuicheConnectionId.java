@@ -13,7 +13,7 @@ import org.eclipse.jetty.http3.quic.quiche.uint8_t_pointer;
 import static org.eclipse.jetty.http3.quic.quiche.LibQuiche.INSTANCE;
 import static org.eclipse.jetty.http3.quic.quiche.LibQuiche.QUICHE_MAX_CONN_ID_LEN;
 
-public class QuicConnectionId
+public class QuicheConnectionId
 {
     private static final byte[] HEX_ARRAY = "0123456789abcdef".getBytes(StandardCharsets.US_ASCII);
 
@@ -21,7 +21,7 @@ public class QuicConnectionId
     private final int hashCode;
     private final String string;
 
-    private QuicConnectionId(byte[] dcid)
+    private QuicheConnectionId(byte[] dcid)
     {
         this.dcid = Objects.requireNonNull(dcid);
         this.hashCode = Arrays.hashCode(dcid);
@@ -38,16 +38,16 @@ public class QuicConnectionId
         return new String(hexChars, StandardCharsets.UTF_8);
     }
 
-    static QuicConnectionId fromCid(byte[] dcid, size_t_pointer dcid_len)
+    static QuicheConnectionId fromCid(byte[] dcid, size_t_pointer dcid_len)
     {
         byte[] sizedDcid = resizeIfNeeded(dcid, dcid_len);
-        return new QuicConnectionId(sizedDcid);
+        return new QuicheConnectionId(sizedDcid);
     }
 
     /**
      * Does not consume the packet byte buffer.
      */
-    public static QuicConnectionId fromPacket(ByteBuffer packet)
+    public static QuicheConnectionId fromPacket(ByteBuffer packet)
     {
         uint8_t_pointer type = new uint8_t_pointer();
         uint32_t_pointer version = new uint32_t_pointer();
@@ -95,7 +95,7 @@ public class QuicConnectionId
             return true;
         if (o == null || getClass() != o.getClass())
             return false;
-        QuicConnectionId that = (QuicConnectionId)o;
+        QuicheConnectionId that = (QuicheConnectionId)o;
         return Arrays.equals(dcid, that.dcid);
     }
 

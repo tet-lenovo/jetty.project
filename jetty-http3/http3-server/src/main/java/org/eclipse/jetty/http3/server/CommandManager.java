@@ -8,7 +8,7 @@ import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.function.LongConsumer;
 
-import org.eclipse.jetty.http3.quic.QuicConnection;
+import org.eclipse.jetty.http3.quic.QuicheConnection;
 import org.eclipse.jetty.http3.quic.quiche.LibQuiche;
 import org.eclipse.jetty.io.ByteBufferPool;
 import org.eclipse.jetty.util.BufferUtil;
@@ -44,7 +44,7 @@ public class CommandManager
     /**
      * @return true if the command was immediately processed, false if it was queued.
      */
-    public boolean quicSend(DatagramChannel channel, QuicEndPointManager endPointManager) throws IOException
+    public boolean quicSend(DatagramChannel channel, QuicConnection endPointManager) throws IOException
     {
         QuicSendCommand quicSendCommand = new QuicSendCommand(channel, endPointManager);
         if (!quicSendCommand.execute())
@@ -58,9 +58,9 @@ public class CommandManager
     /**
      * @return true if the command was immediately processed, false if it was queued.
      */
-    public boolean quicTimeout(QuicEndPointManager quicEndPointManager, DatagramChannel channel, boolean closed) throws IOException
+    public boolean quicTimeout(QuicConnection quicConnection, DatagramChannel channel, boolean closed) throws IOException
     {
-        QuicTimeoutCommand quicTimeoutCommand = new QuicTimeoutCommand(quicEndPointManager, channel, closed);
+        QuicTimeoutCommand quicTimeoutCommand = new QuicTimeoutCommand(quicConnection, channel, closed);
         if (!quicTimeoutCommand.execute())
         {
             commands.offer(quicTimeoutCommand);
@@ -102,10 +102,10 @@ public class CommandManager
         private final boolean close;
         private boolean timeoutCalled;
 
-        public QuicTimeoutCommand(QuicEndPointManager quicEndPointManager, DatagramChannel channel, boolean close)
+        public QuicTimeoutCommand(QuicConnection quicConnection, DatagramChannel channel, boolean close)
         {
             this.close = close;
-            this.quicSendCommand = new QuicSendCommand("timeout", channel, quicEndPointManager);
+            this.quicSendCommand = new QuicSendCommand("timeout", channel, quicConnection);
         }
 
         @Override
@@ -114,7 +114,7 @@ public class CommandManager
             if (!timeoutCalled)
             {
                 LOG.debug("notifying quiche of timeout");
-                quicSendCommand.quicConnection.onTimeout();
+                quicSendCommand.quicheConnection.onTimeout();
                 timeoutCalled = true;
             }
             boolean written = quicSendCommand.execute();
@@ -123,7 +123,7 @@ public class CommandManager
             if (close)
             {
                 LOG.debug("disposing of quiche connection");
-                quicSendCommand.quicConnection.dispose();
+                quicSendCommand.quicheConnection.dispose();
             }
             return true;
         }
@@ -132,25 +132,25 @@ public class CommandManager
     private class QuicSendCommand implements Command
     {
         private final String cmdName;
-        private final QuicConnection quicConnection;
+        private final QuicheConnection quicheConnection;
         private final DatagramChannel channel;
         private final SocketAddress peer;
         private final LongConsumer timeoutConsumer;
 
         private ByteBuffer buffer;
 
-        public QuicSendCommand(DatagramChannel channel, QuicEndPointManager quicEndPointManager)
+        public QuicSendCommand(DatagramChannel channel, QuicConnection quicConnection)
         {
-            this("send", channel, quicEndPointManager);
+            this("send", channel, quicConnection);
         }
 
-        private QuicSendCommand(String cmdName, DatagramChannel channel, QuicEndPointManager quicEndPointManager)
+        private QuicSendCommand(String cmdName, DatagramChannel channel, QuicConnection quicConnection)
         {
             this.cmdName = cmdName;
-            this.quicConnection = quicEndPointManager.getQuicConnection();
+            this.quicheConnection = quicConnection.getQuicConnection();
             this.channel = channel;
-            this.peer = quicEndPointManager.getRemoteAddress();
-            this.timeoutConsumer = quicEndPointManager.getTimeoutSetter();
+            this.peer = quicConnection.getRemoteAddress();
+            this.timeoutConsumer = quicConnection.getTimeoutSetter();
         }
 
         @Override
@@ -177,8 +177,8 @@ public class CommandManager
 
             while (true)
             {
-                int quicSent = quicConnection.send(buffer);
-                timeoutConsumer.accept(quicConnection.nextTimeout());
+                int quicSent = quicheConnection.send(buffer);
+                timeoutConsumer.accept(quicheConnection.nextTimeout());
                 if (quicSent == 0)
                 {
                     LOG.debug("executed {} command; all done", cmdName);

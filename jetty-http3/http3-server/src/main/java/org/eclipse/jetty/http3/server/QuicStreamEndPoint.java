@@ -5,7 +5,7 @@ import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import org.eclipse.jetty.http3.quic.QuicStream;
+import org.eclipse.jetty.http3.quic.QuicheStream;
 import org.eclipse.jetty.io.AbstractEndPoint;
 import org.eclipse.jetty.io.EofException;
 import org.eclipse.jetty.util.BufferUtil;
@@ -16,42 +16,42 @@ import org.slf4j.LoggerFactory;
 public class QuicStreamEndPoint extends AbstractEndPoint
 {
     protected static final Logger LOG = LoggerFactory.getLogger(QuicStreamEndPoint.class);
-    private final QuicEndPointManager quicEndPointManager;
+    private final QuicConnection quicConnection;
     final AtomicBoolean fillInterested = new AtomicBoolean();
     private final long streamId;
 
-    protected QuicStreamEndPoint(Scheduler scheduler, QuicEndPointManager quicEndPointManager, long streamId)
+    protected QuicStreamEndPoint(Scheduler scheduler, QuicConnection quicConnection, long streamId)
     {
         super(scheduler);
-        this.quicEndPointManager = quicEndPointManager;
+        this.quicConnection = quicConnection;
         this.streamId = streamId;
     }
 
     @Override
     public InetSocketAddress getLocalAddress()
     {
-        return quicEndPointManager.getLocalAddress();
+        return quicConnection.getLocalAddress();
     }
 
     @Override
     public InetSocketAddress getRemoteAddress()
     {
-        return quicEndPointManager.getRemoteAddress();
+        return quicConnection.getRemoteAddress();
     }
 
     @Override
     public int fill(ByteBuffer buffer) throws IOException
     {
-        if (quicEndPointManager.isQuicConnectionClosed())
+        if (quicConnection.isQuicConnectionClosed())
             return -1;
 
-        QuicStream quicStream = quicEndPointManager.quicReadableStream(streamId);
-        if (quicStream == null)
+        QuicheStream quicheStream = quicConnection.quicReadableStream(streamId);
+        if (quicheStream == null)
             return 0;
 
         int pos = BufferUtil.flipToFill(buffer);
-        int read = quicStream.read(buffer);
-        if (quicStream.isReceivedFin())
+        int read = quicheStream.read(buffer);
+        if (quicheStream.isReceivedFin())
             shutdownInput();
 
         BufferUtil.flipToFlush(buffer, pos);
@@ -62,18 +62,18 @@ public class QuicStreamEndPoint extends AbstractEndPoint
     @Override
     public void onClose(Throwable failure)
     {
-        quicEndPointManager.onStreamClosed(streamId);
+        quicConnection.onStreamClosed(streamId);
     }
 
     @Override
     public boolean flush(ByteBuffer... buffers) throws IOException
     {
         LOG.debug("flush");
-        if (quicEndPointManager.isQuicConnectionClosed())
+        if (quicConnection.isQuicConnectionClosed())
             throw new IOException("connection is closed");
 
-        QuicStream quicStream = quicEndPointManager.quicWritableStream(streamId);
-        if (quicStream == null)
+        QuicheStream quicheStream = quicConnection.quicWritableStream(streamId);
+        if (quicheStream == null)
             return false;
 
         long flushed = 0L;
@@ -81,7 +81,7 @@ public class QuicStreamEndPoint extends AbstractEndPoint
         {
             for (ByteBuffer buffer : buffers)
             {
-                flushed += quicStream.write(buffer, false);
+                flushed += quicheStream.write(buffer, false);
             }
             if (LOG.isDebugEnabled())
                 LOG.debug("flushed {} {}", flushed, this);
@@ -106,7 +106,7 @@ public class QuicStreamEndPoint extends AbstractEndPoint
     @Override
     public Object getTransport()
     {
-        return quicEndPointManager.getQuicConnection();
+        return quicConnection.getQuicConnection();
     }
 
     @Override

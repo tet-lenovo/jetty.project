@@ -9,19 +9,19 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.function.LongConsumer;
 
-import org.eclipse.jetty.http3.quic.QuicConnection;
-import org.eclipse.jetty.http3.quic.QuicStream;
+import org.eclipse.jetty.http3.quic.QuicheConnection;
+import org.eclipse.jetty.http3.quic.QuicheStream;
 import org.eclipse.jetty.io.ByteBufferPool;
 import org.eclipse.jetty.util.BufferUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class QuicEndPointManager
+public class QuicConnection
 {
-    private static final Logger LOG = LoggerFactory.getLogger(QuicEndPointManager.class);
+    private static final Logger LOG = LoggerFactory.getLogger(QuicConnection.class);
 
     private final QuicConnector quicConnector;
-    private final QuicConnection quicConnection;
+    private final QuicheConnection quicheConnection;
     private final Map<Long, QuicStreamEndPoint> streamEndpoints = new ConcurrentHashMap<>();
     private final InetSocketAddress localAddress;
     private volatile InetSocketAddress remoteAddress;
@@ -29,9 +29,9 @@ public class QuicEndPointManager
     private volatile long timeoutInNs;
     private volatile boolean markedClosed;
 
-    protected QuicEndPointManager(QuicConnection quicConnection, InetSocketAddress localAddress, InetSocketAddress remoteAddress, QuicConnector quicConnector)
+    protected QuicConnection(QuicheConnection quicheConnection, InetSocketAddress localAddress, InetSocketAddress remoteAddress, QuicConnector quicConnector)
     {
-        this.quicConnection = quicConnection;
+        this.quicheConnection = quicheConnection;
         this.localAddress = localAddress;
         this.remoteAddress = remoteAddress;
         this.quicConnector = quicConnector;
@@ -39,7 +39,7 @@ public class QuicEndPointManager
 
     public void dispose()
     {
-        quicConnection.dispose();
+        quicheConnection.dispose();
     }
 
     public InetSocketAddress getLocalAddress()
@@ -72,26 +72,26 @@ public class QuicEndPointManager
         LOG.debug("handling packet " + BufferUtil.toDetailString(buffer));
         remoteAddress = peer;
 
-        boolean establishedBefore = quicConnection.isConnectionEstablished();
-        quicConnection.recv(buffer);
+        boolean establishedBefore = quicheConnection.isConnectionEstablished();
+        quicheConnection.recv(buffer);
         bufferPool.release(buffer);
-        boolean establishedAfter = quicConnection.isConnectionEstablished();
+        boolean establishedAfter = quicheConnection.isConnectionEstablished();
         if (!establishedBefore && establishedAfter)
-            LOG.debug("newly established connection, negotiated ALPN protocol : {}", quicConnection.getNegotiatedProtocol());
+            LOG.debug("newly established connection, negotiated ALPN protocol : {}", quicheConnection.getNegotiatedProtocol());
 
         if (establishedAfter)
         {
-            Iterator<QuicStream> it = quicConnection.readableStreamsIterator();
+            Iterator<QuicheStream> it = quicheConnection.readableStreamsIterator();
             while (it.hasNext())
             {
-                QuicStream stream = it.next();
+                QuicheStream stream = it.next();
                 long streamId = stream.getStreamId();
                 LOG.debug("stream {} is readable", streamId);
 
                 QuicStreamEndPoint streamEndPoint = streamEndpoints.compute(streamId, (sid, quicStreamEndPoint) ->
                 {
                     if (quicStreamEndPoint == null)
-                        quicStreamEndPoint = quicConnector.createQuicStreamEndPoint(QuicEndPointManager.this, sid);
+                        quicStreamEndPoint = quicConnector.createQuicStreamEndPoint(QuicConnection.this, sid);
                     return quicStreamEndPoint;
                 });
 
@@ -123,17 +123,17 @@ public class QuicEndPointManager
 
     public boolean closeQuicConnection() throws IOException
     {
-        return quicConnection.close();
+        return quicheConnection.close();
     }
 
     public boolean isQuicConnectionClosed()
     {
-        return quicConnection.isConnectionClosed();
+        return quicheConnection.isConnectionClosed();
     }
 
-    public QuicConnection getQuicConnection()
+    public QuicheConnection getQuicConnection()
     {
-        return quicConnection;
+        return quicheConnection;
     }
 
     public boolean hasQuicConnectionTimedOut()
@@ -141,24 +141,24 @@ public class QuicEndPointManager
         return System.nanoTime() - registrationTsInNs >= timeoutInNs;
     }
 
-    public QuicStream quicWritableStream(long streamId)
+    public QuicheStream quicWritableStream(long streamId)
     {
-        Iterator<QuicStream> it = quicConnection.writableStreamsIterator();
+        Iterator<QuicheStream> it = quicheConnection.writableStreamsIterator();
         while (it.hasNext())
         {
-            QuicStream stream = it.next();
+            QuicheStream stream = it.next();
             if (stream.getStreamId() == streamId)
                 return stream;
         }
         return null;
     }
 
-    public QuicStream quicReadableStream(long streamId)
+    public QuicheStream quicReadableStream(long streamId)
     {
-        Iterator<QuicStream> it = quicConnection.readableStreamsIterator();
+        Iterator<QuicheStream> it = quicheConnection.readableStreamsIterator();
         while (it.hasNext())
         {
-            QuicStream stream = it.next();
+            QuicheStream stream = it.next();
             if (stream.getStreamId() == streamId)
                 return stream;
         }
