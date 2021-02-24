@@ -106,7 +106,7 @@ public class QuicStreamEndPoint extends AbstractEndPoint
     @Override
     public Object getTransport()
     {
-        return quicConnection.getQuicConnection();
+        return quicConnection.getQuicheConnection();
     }
 
     @Override

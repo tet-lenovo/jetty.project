@@ -131,7 +131,7 @@ public class QuicConnection
         return quicheConnection.isConnectionClosed();
     }
 
-    public QuicheConnection getQuicConnection()
+    public QuicheConnection getQuicheConnection()
     {
         return quicheConnection;
     }

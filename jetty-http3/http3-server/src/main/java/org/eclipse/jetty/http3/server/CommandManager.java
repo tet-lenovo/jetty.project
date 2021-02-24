@@ -30,9 +30,9 @@ public class CommandManager
     /**
      * @return true if the command was immediately processed, false if it was queued.
      */
-    public boolean channelWrite(ByteBuffer newConnectionNegotiationToSend, DatagramChannel channel, SocketAddress peer) throws IOException
+    public boolean channelWrite(DatagramChannel channel, ByteBuffer buffer, SocketAddress peer) throws IOException
     {
-        ChannelWriteCommand channelWriteCommand = new ChannelWriteCommand(newConnectionNegotiationToSend, channel, peer);
+        ChannelWriteCommand channelWriteCommand = new ChannelWriteCommand(buffer, channel, peer);
         if (!channelWriteCommand.execute())
         {
             commands.offer(channelWriteCommand);
@@ -44,9 +44,9 @@ public class CommandManager
     /**
      * @return true if the command was immediately processed, false if it was queued.
      */
-    public boolean quicSend(DatagramChannel channel, QuicConnection endPointManager) throws IOException
+    public boolean quicSend(QuicConnection connection, DatagramChannel channel) throws IOException
     {
-        QuicSendCommand quicSendCommand = new QuicSendCommand(channel, endPointManager);
+        QuicSendCommand quicSendCommand = new QuicSendCommand(channel, connection);
         if (!quicSendCommand.execute())
         {
             commands.offer(quicSendCommand);
@@ -147,7 +147,7 @@ public class CommandManager
         private QuicSendCommand(String cmdName, DatagramChannel channel, QuicConnection quicConnection)
         {
             this.cmdName = cmdName;
-            this.quicheConnection = quicConnection.getQuicConnection();
+            this.quicheConnection = quicConnection.getQuicheConnection();
             this.channel = channel;
             this.peer = quicConnection.getRemoteAddress();
             this.timeoutConsumer = quicConnection.getTimeoutSetter();

@@ -34,7 +34,7 @@ public class QuicConnector extends AbstractNetworkConnector
     private QuicheConfig quicheConfig;
     private CommandManager commandManager;
 
-    private final Map<QuicheConnectionId, QuicConnection> endpointManagers = new ConcurrentHashMap<>();
+    private final Map<QuicheConnectionId, QuicConnection> connections = new ConcurrentHashMap<>();
     private final Runnable selection = () ->
     {
         String oldName = Thread.currentThread().getName();
@@ -106,8 +106,8 @@ public class QuicConnector extends AbstractNetworkConnector
         if (selector == null)
             return;
 
-        endpointManagers.values().forEach(QuicConnection::dispose);
-        endpointManagers.clear();
+        connections.values().forEach(QuicConnection::dispose);
+        connections.clear();
         IO.close(channel);
         channel = null;
         IO.close(selector);
@@ -118,7 +118,7 @@ public class QuicConnector extends AbstractNetworkConnector
 
     private void fireTimeoutNotificationIfNeeded()
     {
-        boolean timedOut = endpointManagers.values().stream().map(QuicConnection::hasQuicConnectionTimedOut).findFirst().orElse(false);
+        boolean timedOut = connections.values().stream().map(QuicConnection::hasQuicConnectionTimedOut).findFirst().orElse(false);
         if (timedOut)
         {
             LOG.debug("connection timed out, waking up selector");
@@ -167,7 +167,7 @@ public class QuicConnector extends AbstractNetworkConnector
     private void processTimeout() throws IOException
     {
         boolean needWrite = false;
-        Iterator<QuicConnection> it = endpointManagers.values().iterator();
+        Iterator<QuicConnection> it = connections.values().iterator();
         while (it.hasNext())
         {
             QuicConnection quicConnection = it.next();
@@ -179,7 +179,7 @@ public class QuicConnector extends AbstractNetworkConnector
                 {
                     quicConnection.markClosed();
                     it.remove();
-                    LOG.debug("connection closed due to timeout; remaining connections: " + endpointManagers);
+                    LOG.debug("connection closed due to timeout; remaining connections: " + connections);
                 }
                 needWrite = commandManager.quicTimeout(quicConnection, channel, closed);
             }
@@ -203,9 +203,9 @@ public class QuicConnector extends AbstractNetworkConnector
         buffer.flip();
 
         QuicheConnectionId connectionId = QuicheConnectionId.fromPacket(buffer);
-        QuicConnection endPointManager = endpointManagers.get(connectionId);
+        QuicConnection connection = connections.get(connectionId);
         boolean needWrite;
-        if (endPointManager == null)
+        if (connection == null)
         {
             LOG.debug("got packet for a new connection");
             // new connection
@@ -216,27 +216,27 @@ public class QuicConnector extends AbstractNetworkConnector
             if (acceptedQuicheConnection == null)
             {
                 LOG.debug("new connection negotiation");
-                needWrite = commandManager.channelWrite(newConnectionNegotiationToSend, channel, peer);
+                needWrite = commandManager.channelWrite(channel, newConnectionNegotiationToSend, peer);
             }
             else
             {
                 LOG.debug("new connection accepted");
                 bufferPool.release(newConnectionNegotiationToSend);
-                endPointManager = new QuicConnection(acceptedQuicheConnection, (InetSocketAddress)channel.getLocalAddress(), (InetSocketAddress)peer, this);
-                endpointManagers.put(connectionId, endPointManager);
-                needWrite = commandManager.quicSend(channel, endPointManager);
+                connection = new QuicConnection(acceptedQuicheConnection, (InetSocketAddress)channel.getLocalAddress(), (InetSocketAddress)peer, this);
+                connections.put(connectionId, connection);
+                needWrite = commandManager.quicSend(connection, channel);
             }
         }
         else
         {
             LOG.debug("got packet for an existing connection: " + connectionId + " - buffer: p=" + buffer.position() + " r=" + buffer.remaining());
             // existing connection
-            endPointManager.handlePacket(buffer, (InetSocketAddress)peer, bufferPool);
+            connection.handlePacket(buffer, (InetSocketAddress)peer, bufferPool);
             // Bug? quiche apparently does not send the stream frames after the connection has been closed
             // -> use a mark-as-closed mechanism and first send the data then close
-            needWrite = commandManager.quicSend(channel, endPointManager);
-            if (endPointManager.isMarkedClosed() && endPointManager.closeQuicConnection())
-                needWrite |= commandManager.quicSend(channel, endPointManager);
+            needWrite = commandManager.quicSend(connection, channel);
+            if (connection.isMarkedClosed() && connection.closeQuicConnection())
+                needWrite |= commandManager.quicSend(connection, channel);
         }
         return needWrite;
     }
