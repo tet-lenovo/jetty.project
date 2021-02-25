@@ -17,11 +17,12 @@ import java.util.Base64;
 
 public class SSLKeyPair
 {
-    private static final String BEGIN_CERT = "-----BEGIN CERTIFICATE-----";
     private static final String BEGIN_KEY = "-----BEGIN PRIVATE KEY-----";
-    private static final String END_CERT = "-----END CERTIFICATE-----";
     private static final String END_KEY = "-----END PRIVATE KEY-----";
+    private static final String BEGIN_CERT = "-----BEGIN CERTIFICATE-----";
+    private static final String END_CERT = "-----END CERTIFICATE-----";
     private static final String LINE_SEPARATOR = System.getProperty("line.separator");
+    private static final int LINE_LENGTH = 64;
 
     private final Key key;
     private final Certificate cert;
@@ -66,21 +67,17 @@ public class SSLKeyPair
         return files;
     }
 
-    private static String toPem(Certificate certificate) throws CertificateEncodingException
-    {
-        Base64.Encoder encoder = Base64.getMimeEncoder(64, LINE_SEPARATOR.getBytes());
-
-        byte[] rawCrtText = certificate.getEncoded();
-        String encodedCertText = new String(encoder.encode(rawCrtText));
-        return BEGIN_CERT + LINE_SEPARATOR + encodedCertText + LINE_SEPARATOR + END_CERT;
-    }
-
     private static String toPem(Key key)
     {
-        Base64.Encoder encoder = Base64.getMimeEncoder(64, LINE_SEPARATOR.getBytes());
+        Base64.Encoder encoder = Base64.getMimeEncoder(LINE_LENGTH, LINE_SEPARATOR.getBytes());
+        String encodedText = new String(encoder.encode(key.getEncoded()));
+        return BEGIN_KEY + LINE_SEPARATOR + encodedText + LINE_SEPARATOR + END_KEY;
+    }
 
-        byte[] rawCrtText = key.getEncoded();
-        String encodedCertText = new String(encoder.encode(rawCrtText));
-        return BEGIN_KEY + LINE_SEPARATOR + encodedCertText + LINE_SEPARATOR + END_KEY;
+    private static String toPem(Certificate certificate) throws CertificateEncodingException
+    {
+        Base64.Encoder encoder = Base64.getMimeEncoder(LINE_LENGTH, LINE_SEPARATOR.getBytes());
+        String encodedText = new String(encoder.encode(certificate.getEncoded()));
+        return BEGIN_CERT + LINE_SEPARATOR + encodedText + LINE_SEPARATOR + END_CERT;
     }
 }
