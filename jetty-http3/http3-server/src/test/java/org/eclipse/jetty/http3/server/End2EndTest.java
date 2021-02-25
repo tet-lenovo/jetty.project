@@ -1,5 +1,6 @@
 package org.eclipse.jetty.http3.server;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.PrintWriter;
 import javax.servlet.ServletException;
@@ -23,8 +24,11 @@ public class End2EndTest
     void name() throws Exception
     {
         Server server = new Server();
+
+        SSLKeyPair keyPair = new SSLKeyPair(new File("src/test/resources/keystore.p12"), "PKCS12", "storepwd".toCharArray(), "mykey", "storepwd".toCharArray());
         QuicConnector quicConnector = new QuicConnector(server);
         quicConnector.setPort(8443);
+        quicConnector.setKeyPair(keyPair);
         server.setConnectors(new Connector[]{quicConnector});
 
         HttpConfiguration config = new HttpConfiguration();

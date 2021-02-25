@@ -1,5 +1,6 @@
 package org.eclipse.jetty.http3.server;
 
+import java.io.File;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
@@ -34,10 +35,21 @@ public class QuicConnector extends AbstractNetworkConnector
     private DatagramChannel channel;
     private QuicheConfig quicheConfig;
     private CommandManager commandManager;
+    private SSLKeyPair keyPair;
 
     public QuicConnector(Server server)
     {
         super(server, null, null, null, 0);
+    }
+
+    public SSLKeyPair getKeyPair()
+    {
+        return keyPair;
+    }
+
+    public void setKeyPair(SSLKeyPair keyPair)
+    {
+        this.keyPair = keyPair;
     }
 
     @Override
@@ -56,7 +68,23 @@ public class QuicConnector extends AbstractNetworkConnector
         if (selector != null)
             return;
 
+        if (keyPair == null)
+            throw new IllegalStateException("Missing key pair");
+
+        File[] files;
+        try
+        {
+            files = keyPair.export(new File(System.getProperty("java.io.tmpdir")));
+        }
+        catch (Exception e)
+        {
+            throw new IOException("Error exporting key pair", e);
+        }
+
         quicheConfig = new QuicheConfig();
+        quicheConfig.setPrivKeyPemPath(files[0].getPath());
+        quicheConfig.setCertChainPemPath(files[1].getPath());
+        quicheConfig.setVerifyPeer(false);
         quicheConfig.setMaxIdleTimeout(5000L);
         quicheConfig.setInitialMaxData(10000000L);
         quicheConfig.setInitialMaxStreamDataBidiLocal(10000000L);
@@ -64,9 +92,6 @@ public class QuicConnector extends AbstractNetworkConnector
         quicheConfig.setInitialMaxStreamDataUni(10000000L);
         quicheConfig.setInitialMaxStreamsBidi(100L);
         quicheConfig.setCongestionControl(QuicheConfig.CongestionControl.RENO);
-        quicheConfig.setCertChainPemPath("./src/test/resources/cert.crt");
-        quicheConfig.setPrivKeyPemPath("./src/test/resources/cert.key");
-        quicheConfig.setVerifyPeer(false);
 //        quicConfig.setApplicationProtos(getProtocols().toArray(new String[0]));
         quicheConfig.setApplicationProtos("http/0.9");  // enable HTTP/0.9
 
