@@ -28,8 +28,10 @@ public interface LibQuiche extends Library
         public static void enable()
         {
             if (LIB_QUICHE_LOGGER.isDebugEnabled() && LOGGING_ENABLED.compareAndSet(false, true))
+            {
                 INSTANCE.quiche_enable_debug_logging(LIB_QUICHE_LOGGING_CALLBACK, null);
-            LIB_QUICHE_LOGGER.debug("Quiche version {}", INSTANCE.quiche_version());
+                LIB_QUICHE_LOGGER.debug("Quiche version {}", INSTANCE.quiche_version());
+            }
         }
     }
 
