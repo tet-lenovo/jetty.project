@@ -56,7 +56,6 @@ public class QuicConnector extends AbstractNetworkConnector
     protected void doStart() throws Exception
     {
         super.doStart();
-        LibQuiche.Logging.enable(); // load the quiche native lib
         commandManager = new CommandManager(getByteBufferPool());
         getScheduler().schedule(this::fireTimeoutNotificationIfNeeded, 100, TimeUnit.MILLISECONDS);
         getExecutor().execute(this::accept);
