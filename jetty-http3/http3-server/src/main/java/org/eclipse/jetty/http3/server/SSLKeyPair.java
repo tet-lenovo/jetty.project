@@ -27,11 +27,11 @@ public class SSLKeyPair
     private final Certificate cert;
     private final String alias;
 
-    public SSLKeyPair(KeyStore keyStore, String alias, char[] keyPassword) throws UnrecoverableKeyException, NoSuchAlgorithmException, KeyStoreException
+    public SSLKeyPair(Key key, Certificate cert, String alias)
     {
+        this.key = key;
+        this.cert = cert;
         this.alias = alias;
-        this.key = keyStore.getKey(alias, keyPassword);
-        this.cert = keyStore.getCertificate(alias);
     }
 
     public SSLKeyPair(File storeFile, String storeType, char[] storePassword, String alias, char[] keyPassword) throws KeyStoreException, UnrecoverableKeyException, NoSuchAlgorithmException, IOException, CertificateException
