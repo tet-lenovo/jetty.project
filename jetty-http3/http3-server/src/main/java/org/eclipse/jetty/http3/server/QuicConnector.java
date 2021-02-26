@@ -36,6 +36,7 @@ public class QuicConnector extends AbstractNetworkConnector
     private QuicheConfig quicheConfig;
     private CommandManager commandManager;
     private SSLKeyPair keyPair;
+    private SelectionKey selectionKey;
 
     public QuicConnector(Server server)
     {
@@ -97,7 +98,7 @@ public class QuicConnector extends AbstractNetworkConnector
         this.selector = Selector.open();
         this.channel = DatagramChannel.open();
         this.channel.configureBlocking(false);
-        this.channel.register(selector, SelectionKey.OP_READ);
+        this.selectionKey = this.channel.register(selector, SelectionKey.OP_READ);
         this.channel.bind(bindAddress());
     }
 
@@ -109,6 +110,8 @@ public class QuicConnector extends AbstractNetworkConnector
 
         connections.values().forEach(QuicConnection::dispose);
         connections.clear();
+        selectionKey.cancel();
+        selectionKey = null;
         IO.close(channel);
         channel = null;
         IO.close(selector);
@@ -165,11 +168,16 @@ public class QuicConnector extends AbstractNetworkConnector
         int selected = selector.select();
         if (Thread.interrupted())
             throw new InterruptedException("Selector thread was interrupted");
+        if (isStopping() || isStopped())
+            throw new InterruptedException("Server is " + getState());
 
         if (selected == 0)
         {
             LOG.debug("no selected key; a QUIC connection has timed out");
-            processTimeout();
+            boolean needWrite = processTimeout();
+            int ops = SelectionKey.OP_READ | (needWrite ? SelectionKey.OP_WRITE : 0);
+            LOG.debug("setting key interest to " + ops);
+            selectionKey.interestOps(ops);
             return;
         }
 
@@ -197,7 +205,7 @@ public class QuicConnector extends AbstractNetworkConnector
         }
     }
 
-    private void processTimeout() throws IOException
+    private boolean processTimeout() throws IOException
     {
         boolean needWrite = false;
         Iterator<QuicConnection> it = connections.values().iterator();
@@ -217,8 +225,7 @@ public class QuicConnector extends AbstractNetworkConnector
                 needWrite = commandManager.quicTimeout(quicConnection, channel, closed);
             }
         }
-        //TODO: re-registering might leak some memory, check that
-        channel.register(selector, SelectionKey.OP_READ | (needWrite ? SelectionKey.OP_WRITE : 0));
+        return needWrite;
     }
 
     private boolean processReadableKey() throws IOException
