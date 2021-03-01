@@ -103,6 +103,8 @@ public interface LibQuiche extends Library
                 return "QUICHE_ERR_DONE";
             if (err == QUICHE_ERR_BUFFER_TOO_SHORT)
                 return "QUICHE_ERR_BUFFER_TOO_SHORT";
+            if (err == QUICHE_ERR_INVALID_STREAM_STATE)
+                return "QUICHE_ERR_INVALID_STREAM_STATE";
             if (err == QUICHE_ERR_INVALID_TRANSPORT_PARAM)
                 return "QUICHE_ERR_INVALID_TRANSPORT_PARAM";
             if (err == QUICHE_ERR_TLS_FAIL)
