@@ -78,7 +78,8 @@ public class QuicConnector extends AbstractNetworkConnector
 //        quicConfig.setApplicationProtos(getProtocols().toArray(new String[0]));
         quicheConfig.setApplicationProtos("http/0.9");  // enable HTTP/0.9
 
-        quicConnectionManager = new QuicConnectionManager(getExecutor(), getScheduler(), getByteBufferPool(), this::createQuicStreamEndPoint, bindAddress(), quicheConfig);
+        quicConnectionManager = new QuicConnectionManager(getExecutor(), getScheduler(), getByteBufferPool(), this::createQuicStreamEndPoint, quicheConfig);
+        quicConnectionManager.getChannel().bind(bindAddress());
     }
 
     @Override

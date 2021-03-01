@@ -40,7 +40,7 @@ public class QuicConnectionManager
     private SelectionKey selectionKey;
     private QuicheConfig quicheConfig;
 
-    public QuicConnectionManager(Executor executor, Scheduler scheduler, ByteBufferPool bufferPool, QuicStreamEndPoint.Factory endpointFactory, SocketAddress bindAddress, QuicheConfig quicheConfig) throws IOException
+    public QuicConnectionManager(Executor executor, Scheduler scheduler, ByteBufferPool bufferPool, QuicStreamEndPoint.Factory endpointFactory, QuicheConfig quicheConfig) throws IOException
     {
         this.executor = executor;
         this.scheduler = scheduler;
@@ -51,7 +51,6 @@ public class QuicConnectionManager
         this.channel = DatagramChannel.open();
         this.channel.configureBlocking(false);
         this.selectionKey = this.channel.register(selector, SelectionKey.OP_READ);
-        this.channel.bind(bindAddress);
         this.quicheConfig = quicheConfig;
         this.commandManager = new CommandManager(getByteBufferPool());
     }
