@@ -14,7 +14,6 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 
 import org.eclipse.jetty.http3.quic.QuicheConfig;
-import org.eclipse.jetty.http3.quic.QuicheConnection;
 import org.eclipse.jetty.http3.quic.QuicheConnectionId;
 import org.eclipse.jetty.http3.quic.quiche.LibQuiche;
 import org.eclipse.jetty.io.ByteBufferPool;
@@ -24,7 +23,7 @@ import org.eclipse.jetty.util.thread.Scheduler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class QuicConnectionManager
+public abstract class QuicConnectionManager
 {
     private static final Logger LOG = LoggerFactory.getLogger(QuicConnectionManager.class);
 
@@ -55,17 +54,7 @@ public class QuicConnectionManager
         this.commandManager = new CommandManager(getByteBufferPool());
     }
 
-    private Executor getExecutor()
-    {
-        return executor;
-    }
-
-    private Scheduler getScheduler()
-    {
-        return scheduler;
-    }
-
-    private ByteBufferPool getByteBufferPool()
+    public ByteBufferPool getByteBufferPool()
     {
         return bufferPool;
     }
@@ -75,10 +64,15 @@ public class QuicConnectionManager
         return channel;
     }
 
+    public QuicheConfig getQuicheConfig()
+    {
+        return quicheConfig;
+    }
+
     public void start()
     {
-        getScheduler().schedule(this::fireTimeoutNotificationIfNeeded, 100, TimeUnit.MILLISECONDS);
-        getExecutor().execute(this::accept);
+        scheduler.schedule(this::fireTimeoutNotificationIfNeeded, 100, TimeUnit.MILLISECONDS);
+        executor.execute(this::accept);
     }
 
     public void close()
@@ -106,13 +100,13 @@ public class QuicConnectionManager
             LOG.debug("connection timed out, waking up selector");
             selector.wakeup();
         }
-        getScheduler().schedule(this::fireTimeoutNotificationIfNeeded, 100, TimeUnit.MILLISECONDS);
+        scheduler.schedule(this::fireTimeoutNotificationIfNeeded, 100, TimeUnit.MILLISECONDS);
     }
 
     private void accept()
     {
         String oldName = Thread.currentThread().getName();
-        Thread.currentThread().setName("jetty-quic-acceptor");
+        Thread.currentThread().setName("jetty-" + getClass().getSimpleName());
         while (true)
         {
             try
@@ -210,52 +204,44 @@ public class QuicConnectionManager
         boolean needWrite;
         if (connection == null)
         {
-            LOG.debug("got packet for a new connection");
-            // new connection
-            QuicheConnection acceptedQuicheConnection = QuicheConnection.tryAccept(quicheConfig, peer, buffer);
-            if (acceptedQuicheConnection == null)
-            {
-                LOG.debug("new connection negotiation");
-                ByteBuffer negociationBuffer = bufferPool.acquire(LibQuiche.QUICHE_MIN_CLIENT_INITIAL_LEN, true);
-                BufferUtil.flipToFill(negociationBuffer);
-                if (QuicheConnection.negociate(peer, buffer, negociationBuffer))
-                {
-                    bufferPool.release(buffer);
-                    needWrite = commandManager.channelWrite(channel, negociationBuffer, peer);
-                }
-                else
-                {
-                    bufferPool.release(buffer);
-                    bufferPool.release(negociationBuffer);
-                    needWrite = false;
-                }
-            }
-            else
-            {
-                LOG.debug("new connection accepted");
-                bufferPool.release(buffer);
-                connection = new QuicConnection(acceptedQuicheConnection, (InetSocketAddress)channel.getLocalAddress(), (InetSocketAddress)peer, endpointFactory::createQuicStreamEndPoint);
-                connections.put(connectionId, connection);
-                needWrite = commandManager.quicSend(connection, channel);
-            }
+            needWrite = onNewConnection(buffer, peer, connectionId, endpointFactory);
         }
         else
         {
             LOG.debug("got packet for an existing connection: " + connectionId + " - buffer: p=" + buffer.position() + " r=" + buffer.remaining());
             // existing connection
             connection.quicRecv(buffer, (InetSocketAddress)peer);
-            bufferPool.release(buffer);
             // Bug? quiche apparently does not send the stream frames after the connection has been closed
             // -> use a mark-as-closed mechanism and first send the data then close
             needWrite = commandManager.quicSend(connection, channel);
             if (connection.isMarkedClosed() && connection.closeQuicConnection())
                 needWrite |= commandManager.quicSend(connection, channel);
         }
+        bufferPool.release(buffer);
         return needWrite;
     }
 
     private boolean processWritableKey() throws IOException
     {
         return commandManager.processQueue();
+    }
+
+    protected abstract boolean onNewConnection(ByteBuffer buffer, SocketAddress peer, QuicheConnectionId connectionId, QuicStreamEndPoint.Factory endpointFactory) throws IOException;
+
+    protected void addConnection(QuicheConnectionId connectionId, QuicConnection connection)
+    {
+        connections.put(connectionId, connection);
+    }
+
+    public CommandManager getCommandManager()
+    {
+        return commandManager;
+    }
+
+    protected void changeInterest(boolean needWrite)
+    {
+        int ops = SelectionKey.OP_READ | (needWrite ? SelectionKey.OP_WRITE : 0);
+        LOG.debug("setting key interest to " + ops);
+        selectionKey.interestOps(ops);
     }
 }
