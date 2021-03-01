@@ -84,15 +84,21 @@ public class QuicConnection
                 long streamId = stream.getStreamId();
                 LOG.debug("stream {} is readable", streamId);
 
-                QuicStreamEndPoint streamEndPoint = streamEndpoints.compute(streamId, (sid, quicStreamEndPoint) ->
-                {
-                    if (quicStreamEndPoint == null)
-                        quicStreamEndPoint = endpointFactory.createQuicStreamEndPoint(QuicConnection.this, sid);
-                    return quicStreamEndPoint;
-                });
+                QuicStreamEndPoint streamEndPoint = newStream(streamId);
                 streamEndPoint.onFillable();
             }
         }
+    }
+
+    public QuicStreamEndPoint newStream(long streamId)
+    {
+        QuicStreamEndPoint streamEndPoint = streamEndpoints.compute(streamId, (sid, quicStreamEndPoint) ->
+        {
+            if (quicStreamEndPoint == null)
+                quicStreamEndPoint = endpointFactory.createQuicStreamEndPoint(QuicConnection.this, sid);
+            return quicStreamEndPoint;
+        });
+        return streamEndPoint;
     }
 
     public void onStreamClosed(long streamId)
@@ -159,5 +165,10 @@ public class QuicConnection
                 return stream;
         }
         return null;
+    }
+
+    public int writeToStream(long streamId, ByteBuffer buffer) throws IOException
+    {
+        return quicheConnection.writeToStream(streamId, buffer);
     }
 }
