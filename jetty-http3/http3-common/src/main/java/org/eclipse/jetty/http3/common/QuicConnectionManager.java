@@ -1,6 +1,5 @@
-package org.eclipse.jetty.http3.server;
+package org.eclipse.jetty.http3.common;
 
-import java.io.File;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
@@ -11,100 +10,75 @@ import java.nio.channels.Selector;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 
-import org.eclipse.jetty.http3.common.CommandManager;
-import org.eclipse.jetty.http3.common.QuicConnection;
 import org.eclipse.jetty.http3.quic.QuicheConfig;
 import org.eclipse.jetty.http3.quic.QuicheConnection;
 import org.eclipse.jetty.http3.quic.QuicheConnectionId;
 import org.eclipse.jetty.http3.quic.quiche.LibQuiche;
 import org.eclipse.jetty.io.ByteBufferPool;
-import org.eclipse.jetty.io.Connection;
-import org.eclipse.jetty.server.AbstractNetworkConnector;
-import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.util.BufferUtil;
 import org.eclipse.jetty.util.IO;
+import org.eclipse.jetty.util.thread.Scheduler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class QuicConnector extends AbstractNetworkConnector
+public class QuicConnectionManager
 {
-    protected static final Logger LOG = LoggerFactory.getLogger(QuicConnector.class);
+    private static final Logger LOG = LoggerFactory.getLogger(QuicConnectionManager.class);
+
+    private final Executor executor;
+    private final Scheduler scheduler;
+    private final ByteBufferPool bufferPool;
+    private final QuicStreamEndPoint.Factory endpointFactory;
 
     private final Map<QuicheConnectionId, QuicConnection> connections = new ConcurrentHashMap<>();
+    private CommandManager commandManager;
     private Selector selector;
     private DatagramChannel channel;
-    private QuicheConfig quicheConfig;
-    private CommandManager commandManager;
-    private SSLKeyPair keyPair;
     private SelectionKey selectionKey;
+    private QuicheConfig quicheConfig;
 
-    public QuicConnector(Server server)
+    public QuicConnectionManager(Executor executor, Scheduler scheduler, ByteBufferPool bufferPool, QuicStreamEndPoint.Factory endpointFactory)
     {
-        super(server, null, null, null, 0);
+        this.executor = executor;
+        this.scheduler = scheduler;
+        this.bufferPool = bufferPool;
+        this.endpointFactory = endpointFactory;
     }
 
-    public SSLKeyPair getKeyPair()
+    private Executor getExecutor()
     {
-        return keyPair;
+        return executor;
     }
 
-    public void setKeyPair(SSLKeyPair keyPair)
+    private Scheduler getScheduler()
     {
-        this.keyPair = keyPair;
+        return scheduler;
     }
 
-    @Override
-    protected void doStart() throws Exception
+    private ByteBufferPool getByteBufferPool()
     {
-        super.doStart();
-        commandManager = new CommandManager(getByteBufferPool());
-        getScheduler().schedule(this::fireTimeoutNotificationIfNeeded, 100, TimeUnit.MILLISECONDS);
-        getExecutor().execute(this::accept);
+        return bufferPool;
     }
 
-    @Override
-    public void open() throws IOException
+    public void open(SocketAddress bindAddress) throws Exception
     {
         if (selector != null)
             return;
-
-        if (keyPair == null)
-            throw new IllegalStateException("Missing key pair");
-
-        File[] files;
-        try
-        {
-            files = keyPair.export(new File(System.getProperty("java.io.tmpdir")));
-        }
-        catch (Exception e)
-        {
-            throw new IOException("Error exporting key pair", e);
-        }
-
-        quicheConfig = new QuicheConfig();
-        quicheConfig.setPrivKeyPemPath(files[0].getPath());
-        quicheConfig.setCertChainPemPath(files[1].getPath());
-        quicheConfig.setVerifyPeer(false);
-        quicheConfig.setMaxIdleTimeout(5000L);
-        quicheConfig.setInitialMaxData(10000000L);
-        quicheConfig.setInitialMaxStreamDataBidiLocal(10000000L);
-        quicheConfig.setInitialMaxStreamDataBidiRemote(10000000L);
-        quicheConfig.setInitialMaxStreamDataUni(10000000L);
-        quicheConfig.setInitialMaxStreamsBidi(100L);
-        quicheConfig.setCongestionControl(QuicheConfig.CongestionControl.RENO);
-//        quicConfig.setApplicationProtos(getProtocols().toArray(new String[0]));
-        quicheConfig.setApplicationProtos("http/0.9");  // enable HTTP/0.9
 
         this.selector = Selector.open();
         this.channel = DatagramChannel.open();
         this.channel.configureBlocking(false);
         this.selectionKey = this.channel.register(selector, SelectionKey.OP_READ);
-        this.channel.bind(bindAddress());
+        this.channel.bind(bindAddress);
+
+        commandManager = new CommandManager(getByteBufferPool());
+        getScheduler().schedule(this::fireTimeoutNotificationIfNeeded, 100, TimeUnit.MILLISECONDS);
+        getExecutor().execute(this::accept);
     }
 
-    @Override
     public void close()
     {
         if (selector == null)
@@ -120,15 +94,6 @@ public class QuicConnector extends AbstractNetworkConnector
         selector = null;
         quicheConfig = null;
         commandManager = null;
-    }
-
-    public QuicServerStreamEndPoint createQuicStreamEndPoint(QuicConnection quicConnection, long streamId)
-    {
-        QuicServerStreamEndPoint endPoint = new QuicServerStreamEndPoint(getScheduler(), quicConnection, streamId);
-        Connection connection = getDefaultConnectionFactory().newConnection(this, endPoint);
-        endPoint.setConnection(connection);
-        connection.onOpen();
-        return endPoint;
     }
 
     private void fireTimeoutNotificationIfNeeded()
@@ -170,8 +135,6 @@ public class QuicConnector extends AbstractNetworkConnector
         int selected = selector.select();
         if (Thread.interrupted())
             throw new InterruptedException("Selector thread was interrupted");
-        if (isStopping() || isStopped())
-            throw new InterruptedException("Server is " + getState());
 
         if (selected == 0)
         {
@@ -206,6 +169,7 @@ public class QuicConnector extends AbstractNetworkConnector
             key.interestOps(ops);
         }
     }
+
 
     private boolean processTimeout() throws IOException
     {
@@ -268,7 +232,7 @@ public class QuicConnector extends AbstractNetworkConnector
             {
                 LOG.debug("new connection accepted");
                 bufferPool.release(buffer);
-                connection = new QuicConnection(acceptedQuicheConnection, (InetSocketAddress)channel.getLocalAddress(), (InetSocketAddress)peer, QuicConnector.this::createQuicStreamEndPoint);
+                connection = new QuicConnection(acceptedQuicheConnection, (InetSocketAddress)channel.getLocalAddress(), (InetSocketAddress)peer, endpointFactory::createQuicStreamEndPoint);
                 connections.put(connectionId, connection);
                 needWrite = commandManager.quicSend(connection, channel);
             }
@@ -291,35 +255,5 @@ public class QuicConnector extends AbstractNetworkConnector
     private boolean processWritableKey() throws IOException
     {
         return commandManager.processQueue();
-    }
-
-    private SocketAddress bindAddress()
-    {
-        String host = getHost();
-        if (host == null)
-            host = "0.0.0.0";
-        int port = getPort();
-        if (port < 0)
-            throw new IllegalArgumentException("port cannot be negative: " + port);
-        return new InetSocketAddress(host, port);
-    }
-
-    @Override
-    public Object getTransport()
-    {
-        return channel;
-    }
-
-    @Override
-    public boolean isOpen()
-    {
-        DatagramChannel channel = this.channel;
-        return channel != null && channel.isOpen();
-    }
-
-    @Override
-    protected void accept(int acceptorID)
-    {
-        throw new UnsupportedOperationException(getClass().getSimpleName() + " has its own accepting mechanism");
     }
 }

@@ -1,4 +1,4 @@
-package org.eclipse.jetty.http3.server;
+package org.eclipse.jetty.http3.common;
 
 import java.io.IOException;
 import java.net.SocketAddress;

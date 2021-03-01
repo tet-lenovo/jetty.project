@@ -1,4 +1,4 @@
-package org.eclipse.jetty.http3.server;
+package org.eclipse.jetty.http3.common;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -18,7 +18,7 @@ public class QuicConnection
 {
     private static final Logger LOG = LoggerFactory.getLogger(QuicConnection.class);
 
-    private final QuicConnector quicConnector;
+    private final QuicStreamEndPoint.Factory endpointFactory;
     private final QuicheConnection quicheConnection;
     private final Map<Long, QuicStreamEndPoint> streamEndpoints = new ConcurrentHashMap<>();
     private final InetSocketAddress localAddress;
@@ -27,12 +27,12 @@ public class QuicConnection
     private volatile long sendTimeoutInNs;
     private volatile boolean markedClosed;
 
-    protected QuicConnection(QuicheConnection quicheConnection, InetSocketAddress localAddress, InetSocketAddress remoteAddress, QuicConnector quicConnector)
+    public QuicConnection(QuicheConnection quicheConnection, InetSocketAddress localAddress, InetSocketAddress remoteAddress, QuicStreamEndPoint.Factory endpointFactory)
     {
         this.quicheConnection = quicheConnection;
         this.localAddress = localAddress;
         this.remoteAddress = remoteAddress;
-        this.quicConnector = quicConnector;
+        this.endpointFactory = endpointFactory;
     }
 
     public void dispose()
@@ -87,7 +87,7 @@ public class QuicConnection
                 QuicStreamEndPoint streamEndPoint = streamEndpoints.compute(streamId, (sid, quicStreamEndPoint) ->
                 {
                     if (quicStreamEndPoint == null)
-                        quicStreamEndPoint = quicConnector.createQuicStreamEndPoint(QuicConnection.this, sid);
+                        quicStreamEndPoint = endpointFactory.createQuicStreamEndPoint(QuicConnection.this, sid);
                     return quicStreamEndPoint;
                 });
                 streamEndPoint.onFillable();

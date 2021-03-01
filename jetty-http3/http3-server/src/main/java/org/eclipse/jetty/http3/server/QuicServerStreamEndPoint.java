@@ -5,23 +5,24 @@ import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import org.eclipse.jetty.http3.common.QuicConnection;
+import org.eclipse.jetty.http3.common.QuicStreamEndPoint;
 import org.eclipse.jetty.http3.quic.QuicheStream;
-import org.eclipse.jetty.io.AbstractEndPoint;
 import org.eclipse.jetty.io.EofException;
 import org.eclipse.jetty.util.BufferUtil;
 import org.eclipse.jetty.util.thread.Scheduler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class QuicStreamEndPoint extends AbstractEndPoint
+public class QuicServerStreamEndPoint extends QuicStreamEndPoint
 {
-    private static final Logger LOG = LoggerFactory.getLogger(QuicStreamEndPoint.class);
+    private static final Logger LOG = LoggerFactory.getLogger(QuicServerStreamEndPoint.class);
 
     private final QuicConnection quicConnection;
     private final AtomicBoolean fillInterested = new AtomicBoolean();
     private final long streamId;
 
-    protected QuicStreamEndPoint(Scheduler scheduler, QuicConnection quicConnection, long streamId)
+    protected QuicServerStreamEndPoint(Scheduler scheduler, QuicConnection quicConnection, long streamId)
     {
         super(scheduler);
         this.quicConnection = quicConnection;
