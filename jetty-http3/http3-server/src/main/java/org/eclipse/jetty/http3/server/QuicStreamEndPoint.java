@@ -15,9 +15,10 @@ import org.slf4j.LoggerFactory;
 
 public class QuicStreamEndPoint extends AbstractEndPoint
 {
-    protected static final Logger LOG = LoggerFactory.getLogger(QuicStreamEndPoint.class);
+    private static final Logger LOG = LoggerFactory.getLogger(QuicStreamEndPoint.class);
+
     private final QuicConnection quicConnection;
-    final AtomicBoolean fillInterested = new AtomicBoolean();
+    private final AtomicBoolean fillInterested = new AtomicBoolean();
     private final long streamId;
 
     protected QuicStreamEndPoint(Scheduler scheduler, QuicConnection quicConnection, long streamId)
@@ -37,6 +38,15 @@ public class QuicStreamEndPoint extends AbstractEndPoint
     public InetSocketAddress getRemoteAddress()
     {
         return quicConnection.getRemoteAddress();
+    }
+
+    public void onFillable()
+    {
+        if (fillInterested.compareAndSet(true, false))
+        {
+            LOG.debug("Fillable");
+            getFillInterest().fillable();
+        }
     }
 
     @Override

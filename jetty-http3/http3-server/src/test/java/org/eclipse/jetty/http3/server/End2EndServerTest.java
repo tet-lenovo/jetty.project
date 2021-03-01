@@ -18,7 +18,7 @@ import org.eclipse.jetty.server.handler.AbstractHandler;
 import org.eclipse.jetty.server.handler.HandlerList;
 import org.junit.jupiter.api.Test;
 
-public class End2EndTest
+public class End2EndServerTest
 {
     @Test
     void name() throws Exception
