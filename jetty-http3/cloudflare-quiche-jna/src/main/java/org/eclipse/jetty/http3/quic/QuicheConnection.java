@@ -41,24 +41,27 @@ public class QuicheConnection
 
     private LibQuiche.quiche_conn quicheConn;
     private LibQuiche.quiche_config quicheConfig;
-    private QuicheConnectionId quicheConnectionId;
 
-    private QuicheConnection(LibQuiche.quiche_conn quicheConn, LibQuiche.quiche_config quicheConfig, QuicheConnectionId quicheConnectionId)
+    private QuicheConnection(LibQuiche.quiche_conn quicheConn, LibQuiche.quiche_config quicheConfig)
     {
         this.quicheConn = quicheConn;
         this.quicheConfig = quicheConfig;
-        this.quicheConnectionId = quicheConnectionId;
     }
 
-    public static QuicheConnection connect(QuicheConfig quicConfig, InetSocketAddress peer, int connectionIdLength) throws IOException
+    public static QuicheConnection connect(QuicheConfig quicheConfig, InetSocketAddress peer) throws IOException
+    {
+        return connect(quicheConfig, peer, LibQuiche.QUICHE_MAX_CONN_ID_LEN);
+    }
+
+    public static QuicheConnection connect(QuicheConfig quicheConfig, InetSocketAddress peer, int connectionIdLength) throws IOException
     {
         if (connectionIdLength > LibQuiche.QUICHE_MAX_CONN_ID_LEN)
             throw new IOException("Connection ID length is too large: " + connectionIdLength + " > " + LibQuiche.QUICHE_MAX_CONN_ID_LEN);
         byte[] scid = new byte[connectionIdLength];
         SECURE_RANDOM.nextBytes(scid);
-        LibQuiche.quiche_config quicheConfig = buildConfig(quicConfig);
-        LibQuiche.quiche_conn quicheConn = INSTANCE.quiche_connect(peer.getHostName(), scid, new size_t(scid.length), quicheConfig);
-        return new QuicheConnection(quicheConn, quicheConfig, null);
+        LibQuiche.quiche_config libQuicheConfig = buildConfig(quicheConfig);
+        LibQuiche.quiche_conn quicheConn = INSTANCE.quiche_connect(peer.getHostName(), scid, new size_t(scid.length), libQuicheConfig);
+        return new QuicheConnection(quicheConn, libQuicheConfig);
     }
 
     private static LibQuiche.quiche_config buildConfig(QuicheConfig config) throws IOException
@@ -290,7 +293,7 @@ public class QuicheConnection
         }
 
         LOGGER.debug("  < connection created");
-        QuicheConnection quicheConnection = new QuicheConnection(quicheConn, quicheConfig, QuicheConnectionId.fromCid(dcid, dcid_len));
+        QuicheConnection quicheConnection = new QuicheConnection(quicheConn, quicheConfig);
         quicheConnection.recv(packetRead);
         LOGGER.debug("accepted, immediately receiving the same packet - remaining in buffer: {}", packetRead.remaining());
         return quicheConnection;
@@ -354,11 +357,6 @@ public class QuicheConnection
         token.put(dcid, 0, dcidLength);
 
         return token.array();
-    }
-
-    public QuicheConnectionId getQuicConnectionId()
-    {
-        return quicheConnectionId;
     }
 
     public Iterator<QuicheStream> readableStreamsIterator()
@@ -513,7 +511,6 @@ public class QuicheConnection
             INSTANCE.quiche_config_free(quicheConfig);
             quicheConfig = null;
         }
-        quicheConnectionId = null;
     }
 
     public boolean isDraining()
@@ -529,5 +526,16 @@ public class QuicheConnection
         if (rc == QUICHE_ERR_DONE)
             return false;
         throw new IOException("failed to close connection: " + LibQuiche.quiche_error.errToString(rc));
+    }
+
+    public int writeToStream(long streamId, ByteBuffer buffer) throws IOException
+    {
+        int written = INSTANCE.quiche_conn_stream_send(quicheConn, new uint64_t(streamId), buffer, new size_t(buffer.remaining()), false).intValue();
+        if (written == QUICHE_ERR_DONE)
+            return 0;
+        if (written < 0L)
+            throw new IOException("Quiche failed to write to stream " + streamId + "; err=" + LibQuiche.quiche_error.errToString(written));
+        buffer.position(buffer.position() + written);
+        return written;
     }
 }
