@@ -40,12 +40,20 @@ public class QuicConnectionManager
     private SelectionKey selectionKey;
     private QuicheConfig quicheConfig;
 
-    public QuicConnectionManager(Executor executor, Scheduler scheduler, ByteBufferPool bufferPool, QuicStreamEndPoint.Factory endpointFactory)
+    public QuicConnectionManager(Executor executor, Scheduler scheduler, ByteBufferPool bufferPool, QuicStreamEndPoint.Factory endpointFactory, SocketAddress bindAddress, QuicheConfig quicheConfig) throws IOException
     {
         this.executor = executor;
         this.scheduler = scheduler;
         this.bufferPool = bufferPool;
         this.endpointFactory = endpointFactory;
+
+        this.selector = Selector.open();
+        this.channel = DatagramChannel.open();
+        this.channel.configureBlocking(false);
+        this.selectionKey = this.channel.register(selector, SelectionKey.OP_READ);
+        this.channel.bind(bindAddress);
+        this.quicheConfig = quicheConfig;
+        this.commandManager = new CommandManager(getByteBufferPool());
     }
 
     private Executor getExecutor()
@@ -63,18 +71,13 @@ public class QuicConnectionManager
         return bufferPool;
     }
 
-    public void open(SocketAddress bindAddress) throws Exception
+    public DatagramChannel getChannel()
     {
-        if (selector != null)
-            return;
+        return channel;
+    }
 
-        this.selector = Selector.open();
-        this.channel = DatagramChannel.open();
-        this.channel.configureBlocking(false);
-        this.selectionKey = this.channel.register(selector, SelectionKey.OP_READ);
-        this.channel.bind(bindAddress);
-
-        commandManager = new CommandManager(getByteBufferPool());
+    public void start()
+    {
         getScheduler().schedule(this::fireTimeoutNotificationIfNeeded, 100, TimeUnit.MILLISECONDS);
         getExecutor().execute(this::accept);
     }
