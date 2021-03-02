@@ -96,6 +96,7 @@ public class QuicConnector extends AbstractNetworkConnector
     public QuicServerStreamEndPoint createQuicStreamEndPoint(QuicConnection quicConnection, long streamId)
     {
         QuicServerStreamEndPoint endPoint = new QuicServerStreamEndPoint(getScheduler(), quicConnection, streamId);
+        //TODO: use getConnectionFactory(quicConnection.getNegotiatedProtocol())
         Connection connection = getDefaultConnectionFactory().newConnection(this, endPoint);
         endPoint.setConnection(connection);
         connection.onOpen();

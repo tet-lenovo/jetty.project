@@ -51,7 +51,6 @@ public class QuicClientConnector extends ContainerLifeCycle implements IClientCo
         try
         {
             quicConnectionManager.connect(address, context, httpClientTransportOverQuic);
-            promise.succeeded(null);
         }
         catch (IOException e)
         {

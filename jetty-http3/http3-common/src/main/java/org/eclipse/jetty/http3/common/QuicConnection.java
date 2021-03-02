@@ -84,13 +84,18 @@ public class QuicConnection
                 long streamId = stream.getStreamId();
                 LOG.debug("stream {} is readable", streamId);
 
-                QuicStreamEndPoint streamEndPoint = newStream(streamId);
+                QuicStreamEndPoint streamEndPoint = getOrCreateStreamEndPoint(streamId);
                 streamEndPoint.onFillable();
             }
         }
     }
 
-    public QuicStreamEndPoint newStream(long streamId)
+    public String getNegotiatedProtocol()
+    {
+        return quicheConnection.getNegotiatedProtocol();
+    }
+
+    public QuicStreamEndPoint getOrCreateStreamEndPoint(long streamId)
     {
         QuicStreamEndPoint streamEndPoint = streamEndpoints.compute(streamId, (sid, quicStreamEndPoint) ->
         {

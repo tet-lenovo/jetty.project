@@ -16,8 +16,10 @@ import org.eclipse.jetty.http3.quic.QuicheConnection;
 import org.eclipse.jetty.http3.quic.QuicheConnectionId;
 import org.eclipse.jetty.http3.quic.quiche.LibQuiche;
 import org.eclipse.jetty.io.ByteBufferPool;
+import org.eclipse.jetty.io.ClientConnector;
 import org.eclipse.jetty.io.Connection;
 import org.eclipse.jetty.util.BufferUtil;
+import org.eclipse.jetty.util.Promise;
 import org.eclipse.jetty.util.component.LifeCycle;
 import org.eclipse.jetty.util.thread.Scheduler;
 
@@ -49,12 +51,21 @@ public class QuicClientConnectionManager extends QuicConnectionManager
             QuicConnection quicConnection = new QuicConnection(quicheConnection, (InetSocketAddress)getChannel().getLocalAddress(), (InetSocketAddress)peer, endpointFactory);
             addConnection(quicheConnectionId, quicConnection);
 
-            QuicStreamEndPoint quicStreamEndPoint = quicConnection.newStream(4); // TODO generate a proper stream ID
+            QuicStreamEndPoint quicStreamEndPoint = quicConnection.getOrCreateStreamEndPoint(4); // TODO generate a proper stream ID
             Connection connection = connectingHolder.httpClientTransportOverQuic.newConnection(quicStreamEndPoint, connectingHolder.context);
+            // TODO configure the connection, see other transports
             quicStreamEndPoint.setConnection(connection);
+
+            // TODO these call app code and may throw, fail promise if that happens
+            quicStreamEndPoint.onOpen();
             connection.onOpen();
+
+            @SuppressWarnings("unchecked")
+            Promise<Connection> promise = (Promise<Connection>)connectingHolder.context.get(ClientConnector.CONNECTION_PROMISE_CONTEXT_KEY);
+            promise.succeeded(connection);
         }
 
+        //TODO: cannot re-use this buffer as it's going to be released by the caller
         buffer.clear();
         quicheConnection.send(buffer);
         buffer.flip();

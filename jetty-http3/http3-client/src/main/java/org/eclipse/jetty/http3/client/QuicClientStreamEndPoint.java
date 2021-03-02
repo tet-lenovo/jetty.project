@@ -18,6 +18,7 @@ public class QuicClientStreamEndPoint extends QuicStreamEndPoint
     private static final Logger LOG = LoggerFactory.getLogger(QuicClientStreamEndPoint.class);
 
     private final QuicConnection quicConnection;
+    //TODO: this atomic duplicates state that should be in FillInterest
     private final AtomicBoolean fillInterested = new AtomicBoolean();
     private final long streamId;
 
@@ -56,6 +57,7 @@ public class QuicClientStreamEndPoint extends QuicStreamEndPoint
             return -1;
 
         QuicheStream quicheStream = quicConnection.quicReadableStream(streamId);
+        // TODO: there is a race condition here; between fill interest and the return 0
         if (quicheStream == null)
             return 0;
 
