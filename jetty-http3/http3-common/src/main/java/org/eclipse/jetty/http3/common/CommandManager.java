@@ -101,8 +101,7 @@ public class CommandManager
         return false;
     }
 
-
-    private static abstract class Command
+    private abstract static class Command
     {
         /**
          * @return true if the command completed, false if it needs to be re-executed.

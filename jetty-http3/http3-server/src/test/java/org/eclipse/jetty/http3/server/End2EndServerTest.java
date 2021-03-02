@@ -45,7 +45,8 @@ public class End2EndServerTest
         quicConnector.addConnectionFactory(factory);
         server.addConnector(quicConnector);
 
-        server.setHandler(new AbstractHandler() {
+        server.setHandler(new AbstractHandler()
+        {
             @Override
             public void handle(String target, Request baseRequest, HttpServletRequest request, HttpServletResponse response) throws IOException, ServletException
             {

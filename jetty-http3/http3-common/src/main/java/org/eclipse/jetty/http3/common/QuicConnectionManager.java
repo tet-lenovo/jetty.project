@@ -179,7 +179,6 @@ public abstract class QuicConnectionManager
         }
     }
 
-
     private boolean processTimeout() throws IOException
     {
         boolean needWrite = false;
