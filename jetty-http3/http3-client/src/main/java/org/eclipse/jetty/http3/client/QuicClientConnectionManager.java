@@ -23,6 +23,8 @@ import org.eclipse.jetty.util.thread.Scheduler;
 
 public class QuicClientConnectionManager extends QuicConnectionManager
 {
+    private final Map<SocketAddress, ConnectingHolder> pendingConnections = new ConcurrentHashMap<>();
+
     public QuicClientConnectionManager(LifeCycle lifeCycle, Executor executor, Scheduler scheduler, ByteBufferPool bufferPool, QuicStreamEndPoint.Factory endpointFactory, QuicheConfig quicheConfig) throws IOException
     {
         super(lifeCycle, executor, scheduler, bufferPool, endpointFactory, quicheConfig);
@@ -31,7 +33,7 @@ public class QuicClientConnectionManager extends QuicConnectionManager
     @Override
     protected boolean onNewConnection(ByteBuffer buffer, SocketAddress peer, QuicheConnectionId connectionId, QuicStreamEndPoint.Factory endpointFactory) throws IOException
     {
-        ConnectingHolder connectingHolder = connecting.get(peer);
+        ConnectingHolder connectingHolder = pendingConnections.get(peer);
         if (connectingHolder == null)
             return false;
 
@@ -41,7 +43,7 @@ public class QuicClientConnectionManager extends QuicConnectionManager
 
         if (quicheConnection.isConnectionEstablished())
         {
-            connecting.remove(peer);
+            pendingConnections.remove(peer);
             buffer.reset();
             QuicheConnectionId quicheConnectionId = QuicheConnectionId.fromPacket(buffer);
             QuicConnection quicConnection = new QuicConnection(quicheConnection, (InetSocketAddress)getChannel().getLocalAddress(), (InetSocketAddress)peer, endpointFactory);
@@ -60,8 +62,6 @@ public class QuicClientConnectionManager extends QuicConnectionManager
         return getCommandManager().channelWrite(getChannel(), buffer, peer);
     }
 
-    private final Map<SocketAddress, ConnectingHolder> connecting = new ConcurrentHashMap<>();
-
     public void connect(InetSocketAddress target, Map<String, Object> context, HttpClientTransportOverQuic httpClientTransportOverQuic) throws IOException
     {
         QuicheConnection connection = QuicheConnection.connect(getQuicheConfig(), target);
@@ -69,8 +69,9 @@ public class QuicClientConnectionManager extends QuicConnectionManager
         ByteBuffer buffer = bufferPool.acquire(LibQuiche.QUICHE_MIN_CLIENT_INITIAL_LEN, true);
         BufferUtil.flipToFill(buffer);
         connection.send(buffer);
+        //connection.nextTimeout(); // TODO quiche timeout handling is missing for pending connections
         buffer.flip();
-        connecting.put(target, new ConnectingHolder(connection, context, httpClientTransportOverQuic));
+        pendingConnections.put(target, new ConnectingHolder(connection, context, httpClientTransportOverQuic));
         boolean queued = getCommandManager().channelWrite(getChannel(), buffer, target);
         if (queued)
             changeInterest(true);
