@@ -23,15 +23,14 @@ public class End2EndServerTest
         Server server = new Server();
 
         SSLKeyPair keyPair = new SSLKeyPair(new File("src/test/resources/keystore.p12"), "PKCS12", "storepwd".toCharArray(), "mykey", "storepwd".toCharArray());
-        QuicConnector quicConnector = new QuicConnector(server);
+        QuicConnector quicConnector = new QuicConnector(server, "http/0.9");
         quicConnector.setPort(8443);
         quicConnector.setKeyPair(keyPair);
-        server.addConnector(quicConnector);
-
         HttpConfiguration config = new HttpConfiguration();
         config.setHttpCompliance(HttpCompliance.LEGACY); // enable HTTP/0.9
         HttpConnectionFactory factory = new HttpConnectionFactory(config);
         quicConnector.addConnectionFactory(factory);
+        server.addConnector(quicConnector);
 
         server.setHandler(new AbstractHandler() {
             @Override

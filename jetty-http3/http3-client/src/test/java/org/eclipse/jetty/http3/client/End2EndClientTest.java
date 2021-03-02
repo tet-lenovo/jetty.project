@@ -9,10 +9,8 @@ import javax.servlet.http.HttpServletResponse;
 
 import org.eclipse.jetty.client.HttpClient;
 import org.eclipse.jetty.client.api.ContentResponse;
-import org.eclipse.jetty.http.HttpCompliance;
 import org.eclipse.jetty.http3.server.QuicConnector;
 import org.eclipse.jetty.http3.server.SSLKeyPair;
-import org.eclipse.jetty.server.HttpConfiguration;
 import org.eclipse.jetty.server.HttpConnectionFactory;
 import org.eclipse.jetty.server.Request;
 import org.eclipse.jetty.server.Server;
@@ -23,7 +21,6 @@ import org.junit.jupiter.api.Test;
 
 public class End2EndClientTest
 {
-
     private Server server;
 
     @BeforeEach
@@ -35,12 +32,8 @@ public class End2EndClientTest
         QuicConnector quicConnector = new QuicConnector(server);
         quicConnector.setPort(8443);
         quicConnector.setKeyPair(keyPair);
+        quicConnector.addConnectionFactory(new HttpConnectionFactory());
         server.addConnector(quicConnector);
-
-        HttpConfiguration config = new HttpConfiguration();
-        config.setHttpCompliance(HttpCompliance.LEGACY); // enable HTTP/0.9
-        HttpConnectionFactory factory = new HttpConnectionFactory(config);
-        quicConnector.addConnectionFactory(factory);
 
         server.setHandler(new AbstractHandler() {
             @Override

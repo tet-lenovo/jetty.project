@@ -12,14 +12,13 @@ import org.eclipse.jetty.client.MultiplexConnectionPool;
 import org.eclipse.jetty.client.MultiplexHttpDestination;
 import org.eclipse.jetty.client.Origin;
 import org.eclipse.jetty.client.http.HttpClientConnectionFactory;
+import org.eclipse.jetty.client.http.HttpClientTransportOverHTTP;
 import org.eclipse.jetty.io.ClientConnectionFactory;
 import org.eclipse.jetty.io.ClientConnector;
 import org.eclipse.jetty.io.Connection;
 import org.eclipse.jetty.io.EndPoint;
 import org.eclipse.jetty.util.Promise;
 import org.eclipse.jetty.util.annotation.ManagedObject;
-
-import static org.eclipse.jetty.client.http.HttpClientTransportOverHTTP.HTTP11;
 
 @ManagedObject("The QUIC client transport")
 public class HttpClientTransportOverQuic extends AbstractHttpClientTransport
@@ -29,7 +28,12 @@ public class HttpClientTransportOverQuic extends AbstractHttpClientTransport
 
     public HttpClientTransportOverQuic()
     {
-        connector = new QuicClientConnector();
+        this("http/1.1");
+    }
+
+    public HttpClientTransportOverQuic(String alpnProtocol)
+    {
+        connector = new QuicClientConnector(alpnProtocol);
         addBean(connector);
         setConnectionPoolFactory(destination ->
         {
@@ -49,7 +53,7 @@ public class HttpClientTransportOverQuic extends AbstractHttpClientTransport
     @Override
     public Origin newOrigin(HttpRequest request)
     {
-        return getHttpClient().createOrigin(request, HTTP11);
+        return getHttpClient().createOrigin(request, HttpClientTransportOverHTTP.HTTP11);
     }
 
     @Override

@@ -97,13 +97,12 @@ public class QuicConnection
 
     public QuicStreamEndPoint getOrCreateStreamEndPoint(long streamId)
     {
-        QuicStreamEndPoint streamEndPoint = streamEndpoints.compute(streamId, (sid, quicStreamEndPoint) ->
+        return streamEndpoints.compute(streamId, (sid, quicStreamEndPoint) ->
         {
             if (quicStreamEndPoint == null)
-                quicStreamEndPoint = endpointFactory.createQuicStreamEndPoint(QuicConnection.this, sid);
+                quicStreamEndPoint = endpointFactory.createQuicStreamEndPoint(this, sid);
             return quicStreamEndPoint;
         });
-        return streamEndPoint;
     }
 
     public void onStreamClosed(long streamId)

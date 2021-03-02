@@ -31,10 +31,10 @@ public class QuicClientConnector extends ContainerLifeCycle implements IClientCo
     private Duration idleTimeout = Duration.ofSeconds(30);
     private QuicClientConnectionManager quicConnectionManager;
 
-    public QuicClientConnector()
+    public QuicClientConnector(String httpVersion)
     {
         quicheConfig = new QuicheConfig();
-        quicheConfig.setApplicationProtos("http/0.9");
+        quicheConfig.setApplicationProtos(httpVersion);
         quicheConfig.setMaxIdleTimeout(5000L);
         quicheConfig.setInitialMaxData(10000000L);
         quicheConfig.setInitialMaxStreamDataBidiLocal(10000000L);
