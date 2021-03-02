@@ -3,7 +3,6 @@ package org.eclipse.jetty.http3.client;
 import java.io.File;
 import java.io.IOException;
 import java.io.PrintWriter;
-
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
@@ -13,14 +12,11 @@ import org.eclipse.jetty.client.api.ContentResponse;
 import org.eclipse.jetty.http.HttpCompliance;
 import org.eclipse.jetty.http3.server.QuicConnector;
 import org.eclipse.jetty.http3.server.SSLKeyPair;
-import org.eclipse.jetty.server.Connector;
-import org.eclipse.jetty.server.Handler;
 import org.eclipse.jetty.server.HttpConfiguration;
 import org.eclipse.jetty.server.HttpConnectionFactory;
 import org.eclipse.jetty.server.Request;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.handler.AbstractHandler;
-import org.eclipse.jetty.server.handler.HandlerList;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -39,15 +35,14 @@ public class End2EndClientTest
         QuicConnector quicConnector = new QuicConnector(server);
         quicConnector.setPort(8443);
         quicConnector.setKeyPair(keyPair);
-        server.setConnectors(new Connector[]{quicConnector});
+        server.addConnector(quicConnector);
 
         HttpConfiguration config = new HttpConfiguration();
         config.setHttpCompliance(HttpCompliance.LEGACY); // enable HTTP/0.9
         HttpConnectionFactory factory = new HttpConnectionFactory(config);
         quicConnector.addConnectionFactory(factory);
 
-        HandlerList handlers = new HandlerList();
-        handlers.setHandlers(new Handler[]{new AbstractHandler() {
+        server.setHandler(new AbstractHandler() {
             @Override
             public void handle(String target, Request baseRequest, HttpServletRequest request, HttpServletResponse response) throws IOException, ServletException
             {
@@ -59,8 +54,7 @@ public class End2EndClientTest
                     "\t</body>\n" +
                     "</html>");
             }
-        }});
-        server.setHandler(handlers);
+        });
 
         server.start();
     }
