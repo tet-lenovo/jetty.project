@@ -2,8 +2,9 @@ package org.eclipse.jetty.http3.server;
 
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileWriter;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.Key;
 import java.security.KeyStore;
@@ -56,28 +57,36 @@ public class SSLKeyPair
         files[0] = new File(targetFolder, alias + ".key");
         files[1] = new File(targetFolder, alias + ".crt");
 
-        try (FileWriter fw = new FileWriter(files[0], StandardCharsets.US_ASCII))
+        try (FileOutputStream fos = new FileOutputStream(files[0]))
         {
-            fw.write(toPem(key));
+            writeAsPem(fos, key);
         }
-        try (FileWriter fw = new FileWriter(files[1], StandardCharsets.US_ASCII))
+        try (FileOutputStream fos = new FileOutputStream(files[1]))
         {
-            fw.write(toPem(cert));
+            writeAsPem(fos, cert);
         }
         return files;
     }
 
-    private static String toPem(Key key)
+    private void writeAsPem(OutputStream outputStream, Key key) throws IOException
     {
         Base64.Encoder encoder = Base64.getMimeEncoder(LINE_LENGTH, LINE_SEPARATOR.getBytes());
-        String encodedText = new String(encoder.encode(key.getEncoded()));
-        return BEGIN_KEY + LINE_SEPARATOR + encodedText + LINE_SEPARATOR + END_KEY;
+        byte[] encoded = encoder.encode(key.getEncoded());
+        outputStream.write(BEGIN_KEY.getBytes(StandardCharsets.UTF_8));
+        outputStream.write(LINE_SEPARATOR.getBytes(StandardCharsets.UTF_8));
+        outputStream.write(encoded);
+        outputStream.write(LINE_SEPARATOR.getBytes(StandardCharsets.UTF_8));
+        outputStream.write(END_KEY.getBytes(StandardCharsets.UTF_8));
     }
 
-    private static String toPem(Certificate certificate) throws CertificateEncodingException
+    private static void writeAsPem(OutputStream outputStream, Certificate certificate) throws CertificateEncodingException, IOException
     {
         Base64.Encoder encoder = Base64.getMimeEncoder(LINE_LENGTH, LINE_SEPARATOR.getBytes());
-        String encodedText = new String(encoder.encode(certificate.getEncoded()));
-        return BEGIN_CERT + LINE_SEPARATOR + encodedText + LINE_SEPARATOR + END_CERT;
+        byte[] encoded = encoder.encode(certificate.getEncoded());
+        outputStream.write(BEGIN_CERT.getBytes(StandardCharsets.UTF_8));
+        outputStream.write(LINE_SEPARATOR.getBytes(StandardCharsets.UTF_8));
+        outputStream.write(encoded);
+        outputStream.write(LINE_SEPARATOR.getBytes(StandardCharsets.UTF_8));
+        outputStream.write(END_CERT.getBytes(StandardCharsets.UTF_8));
     }
 }
