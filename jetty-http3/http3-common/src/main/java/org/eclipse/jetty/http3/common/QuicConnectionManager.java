@@ -75,7 +75,7 @@ public abstract class QuicConnectionManager
     public void start()
     {
         scheduler.schedule(this::fireTimeoutNotificationIfNeeded, 100, TimeUnit.MILLISECONDS);
-        executor.execute(this::accept);
+        executor.execute(this::selectLoop);
     }
 
     public void close()
@@ -106,7 +106,7 @@ public abstract class QuicConnectionManager
         scheduler.schedule(this::fireTimeoutNotificationIfNeeded, 100, TimeUnit.MILLISECONDS);
     }
 
-    private void accept()
+    private void selectLoop()
     {
         String oldName = Thread.currentThread().getName();
         Thread.currentThread().setName("jetty-" + getClass().getSimpleName());
@@ -114,7 +114,7 @@ public abstract class QuicConnectionManager
         {
             try
             {
-                selectOnce();
+                select();
             }
             catch (IOException e)
             {
@@ -129,7 +129,7 @@ public abstract class QuicConnectionManager
         Thread.currentThread().setName(oldName);
     }
 
-    private void selectOnce() throws IOException, InterruptedException
+    private void select() throws IOException, InterruptedException
     {
         int selected = selector.select();
         if (Thread.interrupted())
