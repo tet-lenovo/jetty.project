@@ -33,20 +33,20 @@ public class QuicClientConnectionManager extends QuicConnectionManager
     }
 
     @Override
-    protected boolean onNewConnection(ByteBuffer buffer, SocketAddress peer, QuicheConnectionId quicheConnectionId, QuicStreamEndPoint.Factory endpointFactory) throws IOException
+    protected QuicConnection onNewConnection(ByteBuffer buffer, SocketAddress peer, QuicheConnectionId quicheConnectionId, QuicStreamEndPoint.Factory endpointFactory) throws IOException
     {
         ConnectingHolder connectingHolder = pendingConnections.get(peer);
         if (connectingHolder == null)
-            return false;
+            return null;
 
         QuicheConnection quicheConnection = connectingHolder.quicheConnection;
         quicheConnection.recv(buffer);
 
+        QuicConnection quicConnection = null;
         if (quicheConnection.isConnectionEstablished())
         {
             pendingConnections.remove(peer);
-            QuicConnection quicConnection = new QuicConnection(quicheConnection, (InetSocketAddress)getChannel().getLocalAddress(), (InetSocketAddress)peer, endpointFactory);
-            addConnection(quicheConnectionId, quicConnection);
+            quicConnection = new QuicConnection(quicheConnection, (InetSocketAddress)getChannel().getLocalAddress(), (InetSocketAddress)peer, endpointFactory);
 
             QuicStreamEndPoint quicStreamEndPoint = quicConnection.getOrCreateStreamEndPoint(4); // TODO generate a proper stream ID
             Connection connection = connectingHolder.httpClientTransportOverQuic.newConnection(quicStreamEndPoint, connectingHolder.context);
@@ -67,7 +67,10 @@ public class QuicClientConnectionManager extends QuicConnectionManager
         quicheConnection.send(buffer);
         buffer.flip();
 
-        return getCommandManager().channelWrite(getChannel(), buffer, peer);
+        boolean queued = getCommandManager().channelWrite(getChannel(), buffer, peer);
+        if (queued)
+            changeInterest(true);
+        return quicConnection;
     }
 
     public void connect(InetSocketAddress target, Map<String, Object> context, HttpClientTransportOverQuic httpClientTransportOverQuic) throws IOException

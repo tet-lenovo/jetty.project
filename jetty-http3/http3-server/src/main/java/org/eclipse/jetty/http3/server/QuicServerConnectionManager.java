@@ -32,7 +32,7 @@ public class QuicServerConnectionManager extends QuicConnectionManager
     }
 
     @Override
-    protected boolean onNewConnection(ByteBuffer buffer, SocketAddress peer, QuicheConnectionId connectionId, QuicStreamEndPoint.Factory endpointFactory) throws IOException
+    protected QuicConnection onNewConnection(ByteBuffer buffer, SocketAddress peer, QuicheConnectionId connectionId, QuicStreamEndPoint.Factory endpointFactory) throws IOException
     {
         ByteBufferPool bufferPool = getByteBufferPool();
         DatagramChannel channel = getChannel();
@@ -40,7 +40,7 @@ public class QuicServerConnectionManager extends QuicConnectionManager
         CommandManager commandManager = getCommandManager();
 
         boolean needWrite;
-        QuicConnection connection;
+        QuicConnection connection = null;
         LOG.debug("got packet for a new connection");
         // new connection
         QuicheConnection acceptedQuicheConnection = QuicheConnection.tryAccept(quicheConfig, peer, buffer);
@@ -63,9 +63,10 @@ public class QuicServerConnectionManager extends QuicConnectionManager
         {
             LOG.debug("new connection accepted");
             connection = new QuicConnection(acceptedQuicheConnection, (InetSocketAddress)channel.getLocalAddress(), (InetSocketAddress)peer, endpointFactory);
-            addConnection(connectionId, connection);
             needWrite = commandManager.quicSend(connection, channel);
         }
-        return needWrite;
+
+        changeInterest(needWrite);
+        return connection;
     }
 }
