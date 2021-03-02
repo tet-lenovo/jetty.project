@@ -72,8 +72,7 @@ public class QuicClientStreamEndPoint extends QuicStreamEndPoint
     @Override
     public void onClose(Throwable failure)
     {
-        //quicheConnection.onStreamClosed(streamId);
-        LOG.warn("unimplemented");
+        quicConnection.onStreamClosed(streamId);
     }
 
     @Override

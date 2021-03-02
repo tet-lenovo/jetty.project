@@ -19,6 +19,7 @@ import org.eclipse.jetty.http3.quic.quiche.LibQuiche;
 import org.eclipse.jetty.io.ByteBufferPool;
 import org.eclipse.jetty.util.BufferUtil;
 import org.eclipse.jetty.util.IO;
+import org.eclipse.jetty.util.component.LifeCycle;
 import org.eclipse.jetty.util.thread.Scheduler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,6 +28,7 @@ public abstract class QuicConnectionManager
 {
     private static final Logger LOG = LoggerFactory.getLogger(QuicConnectionManager.class);
 
+    private final LifeCycle lifeCycle;
     private final Executor executor;
     private final Scheduler scheduler;
     private final ByteBufferPool bufferPool;
@@ -39,8 +41,9 @@ public abstract class QuicConnectionManager
     private SelectionKey selectionKey;
     private QuicheConfig quicheConfig;
 
-    public QuicConnectionManager(Executor executor, Scheduler scheduler, ByteBufferPool bufferPool, QuicStreamEndPoint.Factory endpointFactory, QuicheConfig quicheConfig) throws IOException
+    public QuicConnectionManager(LifeCycle lifeCycle, Executor executor, Scheduler scheduler, ByteBufferPool bufferPool, QuicStreamEndPoint.Factory endpointFactory, QuicheConfig quicheConfig) throws IOException
     {
+        this.lifeCycle = lifeCycle;
         this.executor = executor;
         this.scheduler = scheduler;
         this.bufferPool = bufferPool;
@@ -131,6 +134,8 @@ public abstract class QuicConnectionManager
         int selected = selector.select();
         if (Thread.interrupted())
             throw new InterruptedException("Selector thread was interrupted");
+        if (!lifeCycle.isRunning())
+            throw new InterruptedException("Container stopped");
 
         if (selected == 0)
         {

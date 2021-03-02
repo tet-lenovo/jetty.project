@@ -18,13 +18,14 @@ import org.eclipse.jetty.http3.quic.quiche.LibQuiche;
 import org.eclipse.jetty.io.ByteBufferPool;
 import org.eclipse.jetty.io.Connection;
 import org.eclipse.jetty.util.BufferUtil;
+import org.eclipse.jetty.util.component.LifeCycle;
 import org.eclipse.jetty.util.thread.Scheduler;
 
 public class QuicClientConnectionManager extends QuicConnectionManager
 {
-    public QuicClientConnectionManager(Executor executor, Scheduler scheduler, ByteBufferPool bufferPool, QuicStreamEndPoint.Factory endpointFactory, QuicheConfig quicheConfig) throws IOException
+    public QuicClientConnectionManager(LifeCycle lifeCycle, Executor executor, Scheduler scheduler, ByteBufferPool bufferPool, QuicStreamEndPoint.Factory endpointFactory, QuicheConfig quicheConfig) throws IOException
     {
-        super(executor, scheduler, bufferPool, endpointFactory, quicheConfig);
+        super(lifeCycle, executor, scheduler, bufferPool, endpointFactory, quicheConfig);
     }
 
     @Override

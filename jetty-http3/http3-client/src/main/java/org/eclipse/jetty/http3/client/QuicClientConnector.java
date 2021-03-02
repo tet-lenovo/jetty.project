@@ -173,7 +173,7 @@ public class QuicClientConnector extends ContainerLifeCycle implements IClientCo
             setByteBufferPool(new MappedByteBufferPool());
         super.doStart();
 
-        quicConnectionManager = new QuicClientConnectionManager(executor, scheduler, byteBufferPool, (quicConnection, streamId) -> new QuicClientStreamEndPoint(getScheduler(), quicConnection, streamId), quicheConfig);
+        quicConnectionManager = new QuicClientConnectionManager(this, executor, scheduler, byteBufferPool, (quicConnection, streamId) -> new QuicClientStreamEndPoint(getScheduler(), quicConnection, streamId), quicheConfig);
         quicConnectionManager.start();
     }
 
