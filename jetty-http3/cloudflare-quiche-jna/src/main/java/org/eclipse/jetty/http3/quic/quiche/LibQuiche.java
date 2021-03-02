@@ -20,7 +20,8 @@ public interface LibQuiche extends Library
 
     // load the native lib named "quiche-linux-amd64"
     LibQuiche INSTANCE = Native.load("quiche-" +
-            System.getProperty("os.name").toLowerCase() + "-" + System.getProperty("os.arch").toLowerCase(),
+            System.getProperty("os.name").toLowerCase().replace(" ", "") + "-" +
+            System.getProperty("os.arch").toLowerCase(),
         LibQuiche.class);
 
     class Logging
