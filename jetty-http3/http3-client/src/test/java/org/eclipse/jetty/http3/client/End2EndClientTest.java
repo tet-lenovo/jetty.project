@@ -85,5 +85,7 @@ public class End2EndClientTest
         System.out.println("Status: " + status);
         System.out.println(contentAsString);
         System.out.println("==========");
+
+        client.stop();
     }
 }

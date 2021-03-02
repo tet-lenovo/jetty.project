@@ -8,7 +8,6 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 
-import org.eclipse.jetty.client.HttpClientTransport;
 import org.eclipse.jetty.http3.common.QuicConnection;
 import org.eclipse.jetty.http3.common.QuicConnectionManager;
 import org.eclipse.jetty.http3.common.QuicStreamEndPoint;
@@ -19,7 +18,6 @@ import org.eclipse.jetty.http3.quic.quiche.LibQuiche;
 import org.eclipse.jetty.io.ByteBufferPool;
 import org.eclipse.jetty.io.Connection;
 import org.eclipse.jetty.util.BufferUtil;
-import org.eclipse.jetty.util.Promise;
 import org.eclipse.jetty.util.thread.Scheduler;
 
 public class QuicClientConnectionManager extends QuicConnectionManager
@@ -42,17 +40,15 @@ public class QuicClientConnectionManager extends QuicConnectionManager
 
         if (quicheConnection.isConnectionEstablished())
         {
+            connecting.remove(peer);
             buffer.reset();
             QuicheConnectionId quicheConnectionId = QuicheConnectionId.fromPacket(buffer);
             QuicConnection connection = new QuicConnection(quicheConnection, (InetSocketAddress)getChannel().getLocalAddress(), (InetSocketAddress)peer, endpointFactory);
             addConnection(quicheConnectionId, connection);
 
             QuicStreamEndPoint quicStreamEndPoint = connection.newStream(4);
-
             Connection c = connectingHolder.httpClientTransportOverQuic.newConnection(quicStreamEndPoint, connectingHolder.context);
-            Promise<Connection> promise = (Promise<Connection>)connectingHolder.context.get(HttpClientTransport.HTTP_CONNECTION_PROMISE_CONTEXT_KEY);
-            connecting.remove(peer);
-            promise.succeeded(c);
+            c.onOpen();
         }
 
         buffer.clear();
