@@ -14,6 +14,10 @@ import org.slf4j.LoggerFactory;
 
 public interface LibQuiche extends Library
 {
+    // This interface is a translation of the quiche.h header of a specific version.
+    // It needs to be reviewed each time the native lib version changes.
+    String EXPECTED_QUICHE_VERSION = "0.7.0";
+
     // load the native lib named "quiche-linux-amd64"
     LibQuiche INSTANCE = Native.load("quiche-" +
             System.getProperty("os.name").toLowerCase() + "-" + System.getProperty("os.arch").toLowerCase(),
@@ -27,10 +31,14 @@ public interface LibQuiche extends Library
 
         public static void enable()
         {
+            String quicheVersion = INSTANCE.quiche_version();
+            if (!EXPECTED_QUICHE_VERSION.equals(quicheVersion))
+                throw new IllegalStateException("Native Quiche library version [" + quicheVersion + "] does not match expected version [" + EXPECTED_QUICHE_VERSION + "]");
+
             if (LIB_QUICHE_LOGGER.isDebugEnabled() && LOGGING_ENABLED.compareAndSet(false, true))
             {
                 INSTANCE.quiche_enable_debug_logging(LIB_QUICHE_LOGGING_CALLBACK, null);
-                LIB_QUICHE_LOGGER.debug("Quiche version {}", INSTANCE.quiche_version());
+                LIB_QUICHE_LOGGER.debug("Quiche version {}", quicheVersion);
             }
         }
     }
