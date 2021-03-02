@@ -8,7 +8,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.eclipse.jetty.http3.common.QuicConnection;
 import org.eclipse.jetty.http3.common.QuicStreamEndPoint;
 import org.eclipse.jetty.http3.quic.QuicheStream;
-import org.eclipse.jetty.io.EofException;
 import org.eclipse.jetty.util.BufferUtil;
 import org.eclipse.jetty.util.thread.Scheduler;
 import org.slf4j.Logger;
@@ -32,13 +31,13 @@ public class QuicClientStreamEndPoint extends QuicStreamEndPoint
     @Override
     public InetSocketAddress getLocalAddress()
     {
-        return null;
+        return quicConnection.getLocalAddress();
     }
 
     @Override
     public InetSocketAddress getRemoteAddress()
     {
-        return null;
+        return quicConnection.getRemoteAddress();
     }
 
     public void onFillable()
