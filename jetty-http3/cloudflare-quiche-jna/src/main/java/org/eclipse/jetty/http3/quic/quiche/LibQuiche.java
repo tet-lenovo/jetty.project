@@ -103,12 +103,30 @@ public interface LibQuiche extends Library
                 return "QUICHE_ERR_DONE";
             if (err == QUICHE_ERR_BUFFER_TOO_SHORT)
                 return "QUICHE_ERR_BUFFER_TOO_SHORT";
+            if (err == QUICHE_ERR_UNKNOWN_VERSION)
+                return "QUICHE_ERR_UNKNOWN_VERSION";
+            if (err == QUICHE_ERR_INVALID_FRAME)
+                return "QUICHE_ERR_INVALID_FRAME";
+            if (err == QUICHE_ERR_INVALID_PACKET)
+                return "QUICHE_ERR_INVALID_PACKET";
+            if (err == QUICHE_ERR_INVALID_STATE)
+                return "QUICHE_ERR_INVALID_STATE";
             if (err == QUICHE_ERR_INVALID_STREAM_STATE)
                 return "QUICHE_ERR_INVALID_STREAM_STATE";
             if (err == QUICHE_ERR_INVALID_TRANSPORT_PARAM)
                 return "QUICHE_ERR_INVALID_TRANSPORT_PARAM";
+            if (err == QUICHE_ERR_CRYPTO_FAIL)
+                return "QUICHE_ERR_CRYPTO_FAIL";
             if (err == QUICHE_ERR_TLS_FAIL)
                 return "QUICHE_ERR_TLS_FAIL";
+            if (err == QUICHE_ERR_FLOW_CONTROL)
+                return "QUICHE_ERR_FLOW_CONTROL";
+            if (err == QUICHE_ERR_STREAM_LIMIT)
+                return "QUICHE_ERR_STREAM_LIMIT";
+            if (err == QUICHE_ERR_FINAL_SIZE)
+                return "QUICHE_ERR_FINAL_SIZE";
+            if (err == QUICHE_ERR_CONGESTION_CONTROL)
+                return "QUICHE_ERR_CONGESTION_CONTROL";
 
             return "?? " + err;
         }
