@@ -153,21 +153,16 @@ public abstract class QuicConnectionManager
             SelectionKey key = selectorIt.next();
             selectorIt.remove();
             LOG.debug("Processing selected key {}", key);
-            boolean needWrite = false;
 
             if (key.isReadable())
             {
-                needWrite |= processReadableKey();
+                processReadableKey();
             }
 
             if (key.isWritable())
             {
-                needWrite |= processWritableKey();
+                processWritableKey();
             }
-
-            int ops = SelectionKey.OP_READ | (needWrite ? SelectionKey.OP_WRITE : 0);
-            LOG.debug("setting key interest to " + ops);
-            key.interestOps(ops);
         }
     }
 
@@ -195,7 +190,7 @@ public abstract class QuicConnectionManager
         return needWrite;
     }
 
-    private boolean processReadableKey() throws IOException
+    private void processReadableKey() throws IOException
     {
         ByteBufferPool bufferPool = getByteBufferPool();
 
@@ -206,10 +201,11 @@ public abstract class QuicConnectionManager
 
         QuicheConnectionId connectionId = QuicheConnectionId.fromPacket(buffer);
         QuicConnection connection = connections.get(connectionId);
-        boolean needWrite;
         if (connection == null)
         {
-            needWrite = onNewConnection(buffer, peer, connectionId, endpointFactory);
+            connection = onNewConnection(buffer, peer, connectionId, endpointFactory);
+            if (connection != null)
+                connections.put(connectionId, connection);
         }
         else
         {
@@ -218,25 +214,21 @@ public abstract class QuicConnectionManager
             connection.quicRecv(buffer, (InetSocketAddress)peer);
             // Bug? quiche apparently does not send the stream frames after the connection has been closed
             // -> use a mark-as-closed mechanism and first send the data then close
-            needWrite = commandManager.quicSend(connection, channel);
+            boolean needWrite = commandManager.quicSend(connection, channel);
             if (connection.isMarkedClosed() && connection.closeQuicConnection())
                 needWrite |= commandManager.quicSend(connection, channel);
+            changeInterest(needWrite);
         }
         bufferPool.release(buffer);
-        return needWrite;
     }
 
-    private boolean processWritableKey() throws IOException
+    private void processWritableKey() throws IOException
     {
-        return commandManager.processQueue();
+        boolean needWrite = commandManager.processQueue();
+        changeInterest(needWrite);
     }
 
-    protected abstract boolean onNewConnection(ByteBuffer buffer, SocketAddress peer, QuicheConnectionId connectionId, QuicStreamEndPoint.Factory endpointFactory) throws IOException;
-
-    protected void addConnection(QuicheConnectionId connectionId, QuicConnection connection)
-    {
-        connections.put(connectionId, connection);
-    }
+    protected abstract QuicConnection onNewConnection(ByteBuffer buffer, SocketAddress peer, QuicheConnectionId connectionId, QuicStreamEndPoint.Factory endpointFactory) throws IOException;
 
     public CommandManager getCommandManager()
     {
