@@ -62,7 +62,7 @@ public class QuicClientConnector extends ContainerLifeCycle implements IClientCo
     @Override
     public SslContextFactory.Client getSslContextFactory()
     {
-        return null;
+        return new SslContextFactory.Client();
     }
 
     @Override

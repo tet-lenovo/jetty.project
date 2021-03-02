@@ -78,7 +78,7 @@ public class End2EndClientTest
         HttpClient client = new HttpClient(transport);
         client.start();
 
-        ContentResponse response = client.GET("http://localhost:8443/");
+        ContentResponse response = client.GET("https://localhost:8443/");
         int status = response.getStatus();
         String contentAsString = response.getContentAsString();
         System.out.println("==========");
