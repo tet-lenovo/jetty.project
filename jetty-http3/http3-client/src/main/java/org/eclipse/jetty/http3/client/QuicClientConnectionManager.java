@@ -4,13 +4,11 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.nio.ByteBuffer;
-import java.nio.channels.DatagramChannel;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 
 import org.eclipse.jetty.client.HttpClientTransport;
-import org.eclipse.jetty.http3.common.CommandManager;
 import org.eclipse.jetty.http3.common.QuicConnection;
 import org.eclipse.jetty.http3.common.QuicConnectionManager;
 import org.eclipse.jetty.http3.common.QuicStreamEndPoint;
@@ -23,13 +21,9 @@ import org.eclipse.jetty.io.Connection;
 import org.eclipse.jetty.util.BufferUtil;
 import org.eclipse.jetty.util.Promise;
 import org.eclipse.jetty.util.thread.Scheduler;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 public class QuicClientConnectionManager extends QuicConnectionManager
 {
-    private static final Logger LOG = LoggerFactory.getLogger(QuicClientConnectionManager.class);
-
     public QuicClientConnectionManager(Executor executor, Scheduler scheduler, ByteBufferPool bufferPool, QuicStreamEndPoint.Factory endpointFactory, QuicheConfig quicheConfig) throws IOException
     {
         super(executor, scheduler, bufferPool, endpointFactory, quicheConfig);
@@ -39,15 +33,17 @@ public class QuicClientConnectionManager extends QuicConnectionManager
     protected boolean onNewConnection(ByteBuffer buffer, SocketAddress peer, QuicheConnectionId connectionId, QuicStreamEndPoint.Factory endpointFactory) throws IOException
     {
         ConnectingHolder connectingHolder = connecting.get(peer);
-        QuicheConnection quicheConnection = connectingHolder.quicheConnection;
-        if (quicheConnection == null)
+        if (connectingHolder == null)
             return false;
 
-        QuicheConnectionId quicheConnectionId = QuicheConnectionId.fromPacket(buffer);
+        QuicheConnection quicheConnection = connectingHolder.quicheConnection;
+        buffer.mark();
         quicheConnection.recv(buffer);
 
         if (quicheConnection.isConnectionEstablished())
         {
+            buffer.reset();
+            QuicheConnectionId quicheConnectionId = QuicheConnectionId.fromPacket(buffer);
             QuicConnection connection = new QuicConnection(quicheConnection, (InetSocketAddress)getChannel().getLocalAddress(), (InetSocketAddress)peer, endpointFactory);
             addConnection(quicheConnectionId, connection);
 
