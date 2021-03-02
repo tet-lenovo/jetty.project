@@ -33,21 +33,18 @@ public class QuicClientConnectionManager extends QuicConnectionManager
     }
 
     @Override
-    protected boolean onNewConnection(ByteBuffer buffer, SocketAddress peer, QuicheConnectionId connectionId, QuicStreamEndPoint.Factory endpointFactory) throws IOException
+    protected boolean onNewConnection(ByteBuffer buffer, SocketAddress peer, QuicheConnectionId quicheConnectionId, QuicStreamEndPoint.Factory endpointFactory) throws IOException
     {
         ConnectingHolder connectingHolder = pendingConnections.get(peer);
         if (connectingHolder == null)
             return false;
 
         QuicheConnection quicheConnection = connectingHolder.quicheConnection;
-        buffer.mark();
         quicheConnection.recv(buffer);
 
         if (quicheConnection.isConnectionEstablished())
         {
             pendingConnections.remove(peer);
-            buffer.reset();
-            QuicheConnectionId quicheConnectionId = QuicheConnectionId.fromPacket(buffer);
             QuicConnection quicConnection = new QuicConnection(quicheConnection, (InetSocketAddress)getChannel().getLocalAddress(), (InetSocketAddress)peer, endpointFactory);
             addConnection(quicheConnectionId, quicConnection);
 
