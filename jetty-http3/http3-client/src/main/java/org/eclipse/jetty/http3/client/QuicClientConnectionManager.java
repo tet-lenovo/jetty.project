@@ -44,12 +44,13 @@ public class QuicClientConnectionManager extends QuicConnectionManager
             connecting.remove(peer);
             buffer.reset();
             QuicheConnectionId quicheConnectionId = QuicheConnectionId.fromPacket(buffer);
-            QuicConnection connection = new QuicConnection(quicheConnection, (InetSocketAddress)getChannel().getLocalAddress(), (InetSocketAddress)peer, endpointFactory);
-            addConnection(quicheConnectionId, connection);
+            QuicConnection quicConnection = new QuicConnection(quicheConnection, (InetSocketAddress)getChannel().getLocalAddress(), (InetSocketAddress)peer, endpointFactory);
+            addConnection(quicheConnectionId, quicConnection);
 
-            QuicStreamEndPoint quicStreamEndPoint = connection.newStream(4);
-            Connection c = connectingHolder.httpClientTransportOverQuic.newConnection(quicStreamEndPoint, connectingHolder.context);
-            c.onOpen();
+            QuicStreamEndPoint quicStreamEndPoint = quicConnection.newStream(4); // TODO generate a proper stream ID
+            Connection connection = connectingHolder.httpClientTransportOverQuic.newConnection(quicStreamEndPoint, connectingHolder.context);
+            quicStreamEndPoint.setConnection(connection);
+            connection.onOpen();
         }
 
         buffer.clear();
