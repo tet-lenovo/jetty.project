@@ -53,21 +53,26 @@ public class QuicClientConnectionManager extends QuicConnectionManager
             // TODO configure the connection, see other transports
             quicStreamEndPoint.setConnection(connection);
 
-            // TODO these call app code and may throw, fail promise if that happens
-            quicStreamEndPoint.onOpen();
-            connection.onOpen();
-
             @SuppressWarnings("unchecked")
             Promise<Connection> promise = (Promise<Connection>)connectingHolder.context.get(ClientConnector.CONNECTION_PROMISE_CONTEXT_KEY);
-            promise.succeeded(connection);
+            try
+            {
+                quicStreamEndPoint.onOpen();
+                connection.onOpen();
+                promise.succeeded(connection);
+            }
+            catch (Throwable t)
+            {
+                promise.failed(t);
+            }
         }
 
-        //TODO: cannot re-use this buffer as it's going to be released by the caller
-        buffer.clear();
-        quicheConnection.send(buffer);
-        buffer.flip();
+        ByteBuffer sendBuffer = getByteBufferPool().acquire(LibQuiche.QUICHE_MIN_CLIENT_INITIAL_LEN, true);
+        BufferUtil.flipToFill(sendBuffer);
+        quicheConnection.send(sendBuffer);
+        sendBuffer.flip();
 
-        boolean queued = getCommandManager().channelWrite(getChannel(), buffer, peer);
+        boolean queued = getCommandManager().channelWrite(getChannel(), sendBuffer, peer);
         if (queued)
             changeInterest(true);
         return quicConnection;
