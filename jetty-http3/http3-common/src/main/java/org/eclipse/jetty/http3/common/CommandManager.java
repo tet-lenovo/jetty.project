@@ -152,7 +152,6 @@ public class CommandManager
     {
         private final String cmdName;
         private final DatagramChannel channel;
-        private final SocketAddress peer;
         private final QuicConnection quicConnection;
 
         private ByteBuffer buffer;
@@ -166,7 +165,6 @@ public class CommandManager
         {
             this.cmdName = cmdName;
             this.channel = channel;
-            this.peer = quicConnection.getRemoteAddress();
             this.quicConnection = quicConnection;
         }
 
@@ -176,7 +174,7 @@ public class CommandManager
             LOG.debug("executing {} command", cmdName);
             if (buffer != null)
             {
-                int channelSent = channel.send(buffer, peer);
+                int channelSent = channel.send(buffer, quicConnection.getRemoteAddress());
                 LOG.debug("resuming sending to channel made it send {} bytes", channelSent);
                 if (channelSent == 0)
                 {
@@ -204,7 +202,7 @@ public class CommandManager
                 }
                 LOG.debug("quiche wants to send {} byte(s)", quicSent);
                 buffer.flip();
-                int channelSent = channel.send(buffer, peer);
+                int channelSent = channel.send(buffer, quicConnection.getRemoteAddress());
                 LOG.debug("channel sent {} byte(s)", channelSent);
                 if (channelSent == 0)
                 {
