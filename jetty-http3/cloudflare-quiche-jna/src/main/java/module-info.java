@@ -11,10 +11,10 @@
 // ========================================================================
 //
 
-module org.eclipse.jetty.http3.quic
+module org.eclipse.jetty.http3.quiche
 {
-    exports org.eclipse.jetty.http3.quic.quiche;
-    exports org.eclipse.jetty.http3.quic;
+    exports org.eclipse.jetty.http3.quiche.ffi;
+    exports org.eclipse.jetty.http3.quiche;
 
     requires org.slf4j;
     requires com.sun.jna;

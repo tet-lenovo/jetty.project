@@ -15,7 +15,7 @@ module org.eclipse.jetty.http3.common
 {
     exports org.eclipse.jetty.http3.common;
 
-    requires transitive org.eclipse.jetty.http3.quic;
+    requires transitive org.eclipse.jetty.http3.quiche;
     requires transitive org.eclipse.jetty.io;
     requires org.slf4j;
 }

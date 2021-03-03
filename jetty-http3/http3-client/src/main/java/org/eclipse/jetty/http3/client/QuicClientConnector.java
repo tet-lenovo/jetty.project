@@ -20,7 +20,7 @@ import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.Executor;
 
-import org.eclipse.jetty.http3.quic.QuicheConfig;
+import org.eclipse.jetty.http3.quiche.QuicheConfig;
 import org.eclipse.jetty.io.ByteBufferPool;
 import org.eclipse.jetty.io.ClientConnector;
 import org.eclipse.jetty.io.IClientConnector;

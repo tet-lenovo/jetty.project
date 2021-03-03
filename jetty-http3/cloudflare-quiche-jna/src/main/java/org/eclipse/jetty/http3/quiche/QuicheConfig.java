@@ -11,9 +11,9 @@
 // ========================================================================
 //
 
-package org.eclipse.jetty.http3.quic;
+package org.eclipse.jetty.http3.quiche;
 
-import org.eclipse.jetty.http3.quic.quiche.LibQuiche;
+import org.eclipse.jetty.http3.quiche.ffi.LibQuiche;
 
 public class QuicheConfig
 {

@@ -11,24 +11,19 @@
 // ========================================================================
 //
 
-package org.eclipse.jetty.http3.quic.quiche;
+package org.eclipse.jetty.http3.quiche.ffi;
 
-import com.sun.jna.ptr.ByReference;
+import com.sun.jna.IntegerType;
+import com.sun.jna.Native;
 
-public class bool_pointer extends ByReference
+public class size_t extends IntegerType
 {
-    public bool_pointer()
+    public size_t()
     {
         this(0);
     }
-    public bool_pointer(int v)
+    public size_t(long value)
     {
-        super(1);
-        getPointer().setByte(0, (byte)v);
-    }
-
-    public boolean getValue()
-    {
-        return getPointer().getByte(0) != 0;
+        super(Native.SIZE_T_SIZE, value, true);
     }
 }

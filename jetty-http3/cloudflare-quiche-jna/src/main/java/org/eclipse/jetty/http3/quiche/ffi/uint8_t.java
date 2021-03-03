@@ -11,29 +11,18 @@
 // ========================================================================
 //
 
-package org.eclipse.jetty.http3.quic.quiche;
+package org.eclipse.jetty.http3.quiche.ffi;
 
-import com.sun.jna.ptr.ByReference;
+import com.sun.jna.IntegerType;
 
-public class uint8_t_pointer extends ByReference
+public class uint8_t extends IntegerType
 {
-    public uint8_t_pointer()
+    public uint8_t()
     {
         this((byte)0);
     }
-    public uint8_t_pointer(byte v)
+    public uint8_t(byte v)
     {
-        super(1);
-        getPointer().setByte(0, v);
-    }
-
-    public byte getValue()
-    {
-        return getPointer().getByte(0);
-    }
-
-    public uint8_t getPointee()
-    {
-        return new uint8_t(getValue());
+        super(1, v, true);
     }
 }

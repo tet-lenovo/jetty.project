@@ -11,18 +11,29 @@
 // ========================================================================
 //
 
-package org.eclipse.jetty.http3.quic.quiche;
+package org.eclipse.jetty.http3.quiche.ffi;
 
-import com.sun.jna.IntegerType;
+import com.sun.jna.ptr.ByReference;
 
-public class uint32_t extends IntegerType
+public class uint32_t_pointer extends ByReference
 {
-    public uint32_t()
+    public uint32_t_pointer()
     {
         this(0);
     }
-    public uint32_t(int v)
+    public uint32_t_pointer(int v)
     {
-        super(4, v, true);
+        super(4);
+        getPointer().setInt(0, v);
+    }
+
+    public int getValue()
+    {
+        return getPointer().getInt(0);
+    }
+
+    public uint32_t getPointee()
+    {
+        return new uint32_t(getValue());
     }
 }

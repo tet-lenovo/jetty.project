@@ -22,7 +22,7 @@ import java.util.Arrays;
 
 import org.eclipse.jetty.http3.common.QuicConnection;
 import org.eclipse.jetty.http3.common.QuicConnectionManager;
-import org.eclipse.jetty.http3.quic.QuicheConfig;
+import org.eclipse.jetty.http3.quiche.QuicheConfig;
 import org.eclipse.jetty.io.Connection;
 import org.eclipse.jetty.server.AbstractNetworkConnector;
 import org.eclipse.jetty.server.ConnectionFactory;

@@ -20,7 +20,7 @@ import java.nio.channels.DatagramChannel;
 import java.util.ArrayDeque;
 import java.util.Deque;
 
-import org.eclipse.jetty.http3.quic.quiche.LibQuiche;
+import org.eclipse.jetty.http3.quiche.ffi.LibQuiche;
 import org.eclipse.jetty.io.ByteBufferPool;
 import org.eclipse.jetty.util.BufferUtil;
 import org.slf4j.Logger;

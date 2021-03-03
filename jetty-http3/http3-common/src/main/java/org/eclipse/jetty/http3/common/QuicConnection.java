@@ -21,8 +21,8 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
-import org.eclipse.jetty.http3.quic.QuicheConnection;
-import org.eclipse.jetty.http3.quic.QuicheStream;
+import org.eclipse.jetty.http3.quiche.QuicheConnection;
+import org.eclipse.jetty.http3.quiche.QuicheStream;
 import org.eclipse.jetty.util.BufferUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

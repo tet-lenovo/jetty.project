@@ -11,19 +11,29 @@
 // ========================================================================
 //
 
-package org.eclipse.jetty.http3.quic.quiche;
+package org.eclipse.jetty.http3.quiche.ffi;
 
-import com.sun.jna.IntegerType;
-import com.sun.jna.Native;
+import com.sun.jna.ptr.ByReference;
 
-public class size_t extends IntegerType
+public class uint8_t_pointer extends ByReference
 {
-    public size_t()
+    public uint8_t_pointer()
     {
-        this(0);
+        this((byte)0);
     }
-    public size_t(long value)
+    public uint8_t_pointer(byte v)
     {
-        super(Native.SIZE_T_SIZE, value, true);
+        super(1);
+        getPointer().setByte(0, v);
+    }
+
+    public byte getValue()
+    {
+        return getPointer().getByte(0);
+    }
+
+    public uint8_t getPointee()
+    {
+        return new uint8_t(getValue());
     }
 }

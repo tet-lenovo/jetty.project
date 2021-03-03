@@ -11,21 +11,21 @@
 // ========================================================================
 //
 
-package org.eclipse.jetty.http3.quic;
+package org.eclipse.jetty.http3.quiche;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Objects;
 
-import org.eclipse.jetty.http3.quic.quiche.LibQuiche;
-import org.eclipse.jetty.http3.quic.quiche.size_t;
-import org.eclipse.jetty.http3.quic.quiche.size_t_pointer;
-import org.eclipse.jetty.http3.quic.quiche.uint32_t_pointer;
-import org.eclipse.jetty.http3.quic.quiche.uint8_t_pointer;
+import org.eclipse.jetty.http3.quiche.ffi.LibQuiche;
+import org.eclipse.jetty.http3.quiche.ffi.size_t;
+import org.eclipse.jetty.http3.quiche.ffi.size_t_pointer;
+import org.eclipse.jetty.http3.quiche.ffi.uint32_t_pointer;
+import org.eclipse.jetty.http3.quiche.ffi.uint8_t_pointer;
 
-import static org.eclipse.jetty.http3.quic.quiche.LibQuiche.INSTANCE;
-import static org.eclipse.jetty.http3.quic.quiche.LibQuiche.QUICHE_MAX_CONN_ID_LEN;
+import static org.eclipse.jetty.http3.quiche.ffi.LibQuiche.INSTANCE;
+import static org.eclipse.jetty.http3.quiche.ffi.LibQuiche.QUICHE_MAX_CONN_ID_LEN;
 
 public class QuicheConnectionId
 {

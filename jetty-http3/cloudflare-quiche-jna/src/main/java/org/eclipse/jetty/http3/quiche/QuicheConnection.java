@@ -11,7 +11,7 @@
 // ========================================================================
 //
 
-package org.eclipse.jetty.http3.quic;
+package org.eclipse.jetty.http3.quiche;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -25,22 +25,22 @@ import java.util.Iterator;
 import java.util.List;
 
 import com.sun.jna.ptr.PointerByReference;
-import org.eclipse.jetty.http3.quic.quiche.LibQuiche;
-import org.eclipse.jetty.http3.quic.quiche.size_t;
-import org.eclipse.jetty.http3.quic.quiche.size_t_pointer;
-import org.eclipse.jetty.http3.quic.quiche.ssize_t;
-import org.eclipse.jetty.http3.quic.quiche.uint32_t;
-import org.eclipse.jetty.http3.quic.quiche.uint32_t_pointer;
-import org.eclipse.jetty.http3.quic.quiche.uint64_t;
-import org.eclipse.jetty.http3.quic.quiche.uint64_t_pointer;
-import org.eclipse.jetty.http3.quic.quiche.uint8_t_pointer;
+import org.eclipse.jetty.http3.quiche.ffi.LibQuiche;
+import org.eclipse.jetty.http3.quiche.ffi.size_t;
+import org.eclipse.jetty.http3.quiche.ffi.size_t_pointer;
+import org.eclipse.jetty.http3.quiche.ffi.ssize_t;
+import org.eclipse.jetty.http3.quiche.ffi.uint32_t;
+import org.eclipse.jetty.http3.quiche.ffi.uint32_t_pointer;
+import org.eclipse.jetty.http3.quiche.ffi.uint64_t;
+import org.eclipse.jetty.http3.quiche.ffi.uint64_t_pointer;
+import org.eclipse.jetty.http3.quiche.ffi.uint8_t_pointer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import static org.eclipse.jetty.http3.quic.quiche.LibQuiche.INSTANCE;
-import static org.eclipse.jetty.http3.quic.quiche.LibQuiche.QUICHE_MAX_CONN_ID_LEN;
-import static org.eclipse.jetty.http3.quic.quiche.LibQuiche.quiche_error.QUICHE_ERR_DONE;
-import static org.eclipse.jetty.http3.quic.quiche.LibQuiche.quiche_error.errToString;
+import static org.eclipse.jetty.http3.quiche.ffi.LibQuiche.INSTANCE;
+import static org.eclipse.jetty.http3.quiche.ffi.LibQuiche.QUICHE_MAX_CONN_ID_LEN;
+import static org.eclipse.jetty.http3.quiche.ffi.LibQuiche.quiche_error.QUICHE_ERR_DONE;
+import static org.eclipse.jetty.http3.quiche.ffi.LibQuiche.quiche_error.errToString;
 
 public class QuicheConnection
 {

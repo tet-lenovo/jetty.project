@@ -26,9 +26,9 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 
-import org.eclipse.jetty.http3.quic.QuicheConfig;
-import org.eclipse.jetty.http3.quic.QuicheConnectionId;
-import org.eclipse.jetty.http3.quic.quiche.LibQuiche;
+import org.eclipse.jetty.http3.quiche.QuicheConfig;
+import org.eclipse.jetty.http3.quiche.QuicheConnectionId;
+import org.eclipse.jetty.http3.quiche.ffi.LibQuiche;
 import org.eclipse.jetty.io.ByteBufferPool;
 import org.eclipse.jetty.util.BufferUtil;
 import org.eclipse.jetty.util.IO;

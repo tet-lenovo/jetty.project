@@ -15,7 +15,7 @@ module org.eclipse.jetty.http3.client
 {
     exports org.eclipse.jetty.http3.client;
 
-    requires transitive org.eclipse.jetty.http3.quic;
+    requires transitive org.eclipse.jetty.http3.quiche;
     requires org.slf4j;
     requires org.eclipse.jetty.util;
     requires org.eclipse.jetty.client;

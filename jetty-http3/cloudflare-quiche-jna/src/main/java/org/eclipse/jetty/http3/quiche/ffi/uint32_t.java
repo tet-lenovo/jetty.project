@@ -11,18 +11,18 @@
 // ========================================================================
 //
 
-package org.eclipse.jetty.http3.quic.quiche;
+package org.eclipse.jetty.http3.quiche.ffi;
 
 import com.sun.jna.IntegerType;
 
-public class uint8_t extends IntegerType
+public class uint32_t extends IntegerType
 {
-    public uint8_t()
+    public uint32_t()
     {
-        this((byte)0);
+        this(0);
     }
-    public uint8_t(byte v)
+    public uint32_t(int v)
     {
-        super(1, v, true);
+        super(4, v, true);
     }
 }

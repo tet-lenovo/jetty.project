@@ -11,19 +11,18 @@
 // ========================================================================
 //
 
-package org.eclipse.jetty.http3.quic.quiche;
+package org.eclipse.jetty.http3.quiche.ffi;
 
 import com.sun.jna.IntegerType;
-import com.sun.jna.Native;
 
-public class ssize_t extends IntegerType
+public class uint64_t extends IntegerType
 {
-    public ssize_t()
+    public uint64_t()
     {
         this(0);
     }
-    public ssize_t(long value)
+    public uint64_t(long v)
     {
-        super(Native.SIZE_T_SIZE, value, false);
+        super(8, v, true);
     }
 }
