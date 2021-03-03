@@ -32,27 +32,29 @@ public class CommandManager
 
     private final Deque<Command> commands = new ArrayDeque<>();
     private final ByteBufferPool bufferPool;
+    private final DatagramChannel channel;
 
-    public CommandManager(ByteBufferPool bufferPool)
+    public CommandManager(ByteBufferPool bufferPool, DatagramChannel channel)
     {
         this.bufferPool = bufferPool;
+        this.channel = channel;
     }
 
-    public void channelWrite(DatagramChannel channel, ByteBuffer buffer, SocketAddress peer) throws IOException
+    public void channelWrite(ByteBuffer buffer, SocketAddress peer) throws IOException
     {
         ChannelWriteCommand command = new ChannelWriteCommand(buffer, channel, peer);
 //        if (!command.execute())
             commands.offer(command);
     }
 
-    public void quicSend(QuicConnection connection, DatagramChannel channel) throws IOException
+    public void quicSend(QuicConnection connection) throws IOException
     {
         QuicSendCommand command = new QuicSendCommand(channel, connection);
 //        if (!command.execute())
             commands.offer(command);
     }
 
-    public void quicTimeout(QuicConnection quicConnection, DatagramChannel channel, boolean dispose) throws IOException
+    public void quicTimeout(QuicConnection quicConnection, boolean dispose) throws IOException
     {
         QuicTimeoutCommand command = new QuicTimeoutCommand(quicConnection, channel, dispose);
 //        if (!command.execute())

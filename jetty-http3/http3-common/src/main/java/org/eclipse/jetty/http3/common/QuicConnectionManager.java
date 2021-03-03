@@ -67,7 +67,7 @@ public abstract class QuicConnectionManager
         this.channel.configureBlocking(false);
         this.selectionKey = this.channel.register(selector, SelectionKey.OP_READ);
         this.quicheConfig = quicheConfig;
-        this.commandManager = new CommandManager(getByteBufferPool());
+        this.commandManager = new CommandManager(getByteBufferPool(), this.channel);
     }
 
     public ByteBufferPool getByteBufferPool()
@@ -201,7 +201,7 @@ public abstract class QuicConnectionManager
                     it.remove();
                     LOG.debug("connection closed due to timeout; remaining connections: " + connections);
                 }
-                commandManager.quicTimeout(quicConnection, channel, closed);
+                commandManager.quicTimeout(quicConnection, closed);
             }
         }
     }
@@ -222,7 +222,7 @@ public abstract class QuicConnectionManager
             quicConnection = createConnection(buffer, peer, connectionId);
             if (quicConnection != null)
             {
-                commandManager.quicSend(quicConnection, channel);
+                commandManager.quicSend(quicConnection);
                 connections.put(connectionId, quicConnection);
             }
         }
@@ -233,9 +233,9 @@ public abstract class QuicConnectionManager
             quicConnection.quicRecv(buffer, peer);
             // Bug? quiche apparently does not send the stream frames after the connection has been closed
             // -> use a mark-as-closed mechanism and first send the data then close
-            commandManager.quicSend(quicConnection, channel);
+            commandManager.quicSend(quicConnection);
             if (quicConnection.isMarkedClosed() && quicConnection.closeQuicConnection())
-                commandManager.quicSend(quicConnection, channel);
+                commandManager.quicSend(quicConnection);
         }
         bufferPool.release(buffer);
     }
@@ -284,7 +284,7 @@ public abstract class QuicConnectionManager
 
     protected void channelWrite(ByteBuffer buffer, SocketAddress peer) throws IOException
     {
-        commandManager.channelWrite(channel, buffer, peer);
+        commandManager.channelWrite(buffer, peer);
     }
 
     protected void wakeupSelectorIfNeeded()
