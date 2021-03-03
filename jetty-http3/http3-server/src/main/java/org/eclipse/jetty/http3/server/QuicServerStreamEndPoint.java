@@ -58,8 +58,9 @@ public class QuicServerStreamEndPoint extends QuicStreamEndPoint
     {
         if (fillInterested.compareAndSet(true, false))
         {
-            LOG.debug("Fillable");
+            LOG.debug("Fillable start");
             getFillInterest().fillable();
+            LOG.debug("Fillable end");
         }
     }
 
@@ -108,7 +109,7 @@ public class QuicServerStreamEndPoint extends QuicStreamEndPoint
                 flushed += quicheStream.write(buffer, false);
             }
             if (LOG.isDebugEnabled())
-                LOG.debug("flushed {} {}", flushed, this);
+                LOG.debug("flushed {} byte(s) - {}", flushed, this);
         }
         catch (IOException e)
         {
