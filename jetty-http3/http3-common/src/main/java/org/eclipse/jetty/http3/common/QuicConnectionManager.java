@@ -15,6 +15,7 @@ package org.eclipse.jetty.http3.common;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.net.SocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.DatagramChannel;
 import java.nio.channels.SelectionKey;
@@ -74,7 +75,7 @@ public abstract class QuicConnectionManager
         return bufferPool;
     }
 
-    public DatagramChannel getChannel()
+    public Object getTransport()
     {
         return channel;
     }
@@ -82,6 +83,11 @@ public abstract class QuicConnectionManager
     public QuicheConfig getQuicheConfig()
     {
         return quicheConfig;
+    }
+
+    public boolean isOpen()
+    {
+        return channel != null && channel.isOpen();
     }
 
     public void start()
@@ -210,23 +216,26 @@ public abstract class QuicConnectionManager
         buffer.flip();
 
         QuicheConnectionId connectionId = QuicheConnectionId.fromPacket(buffer);
-        QuicConnection connection = connections.get(connectionId);
-        if (connection == null)
+        QuicConnection quicConnection = connections.get(connectionId);
+        if (quicConnection == null)
         {
-            connection = createConnection(buffer, peer, connectionId);
-            if (connection != null)
-                connections.put(connectionId, connection);
+            quicConnection = createConnection(buffer, peer, connectionId);
+            if (quicConnection != null)
+            {
+                commandManager.quicSend(quicConnection, channel);
+                connections.put(connectionId, quicConnection);
+            }
         }
         else
         {
             LOG.debug("got packet for an existing connection: " + connectionId + " - buffer: p=" + buffer.position() + " r=" + buffer.remaining());
             // existing connection
-            connection.quicRecv(buffer, peer);
+            quicConnection.quicRecv(buffer, peer);
             // Bug? quiche apparently does not send the stream frames after the connection has been closed
             // -> use a mark-as-closed mechanism and first send the data then close
-            commandManager.quicSend(connection, channel);
-            if (connection.isMarkedClosed() && connection.closeQuicConnection())
-                commandManager.quicSend(connection, channel);
+            commandManager.quicSend(quicConnection, channel);
+            if (quicConnection.isMarkedClosed() && quicConnection.closeQuicConnection())
+                commandManager.quicSend(quicConnection, channel);
         }
         bufferPool.release(buffer);
     }
@@ -258,18 +267,29 @@ public abstract class QuicConnectionManager
 
     protected abstract QuicConnection createConnection(ByteBuffer buffer, InetSocketAddress peer, QuicheConnectionId connectionId) throws IOException;
 
-    protected CommandManager getCommandManager()
-    {
-        return commandManager;
-    }
-
     protected QuicStreamEndPoint.Factory getEndpointFactory()
     {
         return endpointFactory;
     }
 
-    protected void wakeupSelector()
+    protected InetSocketAddress getLocalAddress() throws IOException
     {
-        selector.wakeup();
+        return (InetSocketAddress)channel.getLocalAddress();
+    }
+
+    protected void bind(SocketAddress bindAddress) throws IOException
+    {
+        channel.bind(bindAddress);
+    }
+
+    protected void channelWrite(ByteBuffer buffer, SocketAddress peer) throws IOException
+    {
+        commandManager.channelWrite(channel, buffer, peer);
+    }
+
+    protected void wakeupSelectorIfNeeded()
+    {
+        if (commandManager.needWrite())
+            selector.wakeup();
     }
 }

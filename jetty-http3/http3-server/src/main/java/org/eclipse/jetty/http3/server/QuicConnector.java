@@ -34,7 +34,7 @@ public class QuicConnector extends AbstractNetworkConnector
     private final String[] protocols;
     private QuicheConfig quicheConfig;
     private SSLKeyPair keyPair;
-    private QuicConnectionManager quicConnectionManager;
+    private ServerQuicConnectionManager quicConnectionManager;
 
     public QuicConnector(Server server, String... protocols)
     {
@@ -95,7 +95,7 @@ public class QuicConnector extends AbstractNetworkConnector
             quicheConfig.setApplicationProtos(protocols);
 
         quicConnectionManager = new ServerQuicConnectionManager(this, getExecutor(), getScheduler(), getByteBufferPool(), this::createQuicStreamEndPoint, quicheConfig);
-        quicConnectionManager.getChannel().bind(bindAddress());
+        quicConnectionManager.bind(bindAddress());
     }
 
     @Override
@@ -141,14 +141,13 @@ public class QuicConnector extends AbstractNetworkConnector
     @Override
     public Object getTransport()
     {
-        return quicConnectionManager == null ? null : quicConnectionManager.getChannel();
+        return quicConnectionManager == null ? null : quicConnectionManager.getTransport();
     }
 
     @Override
     public boolean isOpen()
     {
-        DatagramChannel channel = quicConnectionManager == null ? null : quicConnectionManager.getChannel();
-        return channel != null && channel.isOpen();
+        return quicConnectionManager != null && quicConnectionManager.isOpen();
     }
 
     @Override

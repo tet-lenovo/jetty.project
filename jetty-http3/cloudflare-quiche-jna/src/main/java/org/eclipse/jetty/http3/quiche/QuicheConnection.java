@@ -176,7 +176,7 @@ public class QuicheConnection
         return type.getValue();
     }
 
-    public static boolean negociate(SocketAddress peer, ByteBuffer packetRead, ByteBuffer packetToSend) throws IOException
+    public static boolean negotiate(SocketAddress peer, ByteBuffer packetRead, ByteBuffer packetToSend) throws IOException
     {
         uint8_t_pointer type = new uint8_t_pointer();
         uint32_t_pointer version = new uint32_t_pointer();

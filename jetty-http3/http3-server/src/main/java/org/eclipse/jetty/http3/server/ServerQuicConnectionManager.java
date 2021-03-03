@@ -17,10 +17,8 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.nio.ByteBuffer;
-import java.nio.channels.DatagramChannel;
 import java.util.concurrent.Executor;
 
-import org.eclipse.jetty.http3.common.CommandManager;
 import org.eclipse.jetty.http3.common.QuicConnection;
 import org.eclipse.jetty.http3.common.QuicConnectionManager;
 import org.eclipse.jetty.http3.common.QuicStreamEndPoint;
@@ -45,37 +43,41 @@ public class ServerQuicConnectionManager extends QuicConnectionManager
     }
 
     @Override
+    public void bind(SocketAddress bindAddress) throws IOException
+    {
+        super.bind(bindAddress);
+    }
+
+    @Override
     protected QuicConnection createConnection(ByteBuffer buffer, InetSocketAddress peer, QuicheConnectionId connectionId) throws IOException
     {
-        ByteBufferPool bufferPool = getByteBufferPool();
-        DatagramChannel channel = getChannel();
         QuicheConfig quicheConfig = getQuicheConfig();
-        CommandManager commandManager = getCommandManager();
 
         QuicConnection quicConnection;
         LOG.debug("got packet for a new connection");
-        // new connection
         QuicheConnection acceptedQuicheConnection = QuicheConnection.tryAccept(quicheConfig, peer, buffer);
         if (acceptedQuicheConnection == null)
         {
-            LOG.debug("new connection negotiation");
-            ByteBuffer negociationBuffer = bufferPool.acquire(LibQuiche.QUICHE_MIN_CLIENT_INITIAL_LEN, true);
-            BufferUtil.flipToFill(negociationBuffer);
-            if (QuicheConnection.negociate(peer, buffer, negociationBuffer))
+            LOG.debug("accepting connection failed, trying negotiation");
+            ByteBufferPool bufferPool = getByteBufferPool();
+            ByteBuffer negotiationBuffer = bufferPool.acquire(LibQuiche.QUICHE_MIN_CLIENT_INITIAL_LEN, true);
+            BufferUtil.flipToFill(negotiationBuffer);
+            if (QuicheConnection.negotiate(peer, buffer, negotiationBuffer))
             {
-                commandManager.channelWrite(channel, negociationBuffer, peer);
+                LOG.debug("negotiation possible, writing proposal");
+                channelWrite(negotiationBuffer, peer);
             }
             else
             {
-                bufferPool.release(negociationBuffer);
+                LOG.debug("negotiation not possible, ignoring connection attempt");
+                bufferPool.release(negotiationBuffer);
             }
             quicConnection = null;
         }
         else
         {
             LOG.debug("new connection accepted");
-            quicConnection = new QuicConnection(acceptedQuicheConnection, (InetSocketAddress)channel.getLocalAddress(), peer, getEndpointFactory());
-            commandManager.quicSend(quicConnection, channel);
+            quicConnection = new QuicConnection(acceptedQuicheConnection, getLocalAddress(), peer, getEndpointFactory());
         }
         return quicConnection;
     }

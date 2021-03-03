@@ -68,7 +68,7 @@ public class ClientQuicConnectionManager extends QuicConnectionManager
         {
             LOG.debug("quiche established connection {}", quicheConnectionId);
             pendingConnections.remove(peer);
-            quicConnection = new QuicConnection(quicheConnection, (InetSocketAddress)getChannel().getLocalAddress(), peer, getEndpointFactory());
+            quicConnection = new QuicConnection(quicheConnection, getLocalAddress(), peer, getEndpointFactory());
 
             QuicStreamEndPoint quicStreamEndPoint = quicConnection.getOrCreateStreamEndPoint(4); // TODO generate a proper stream ID
             Connection connection = connectingHolder.httpClientTransportOverQuic.newConnection(quicStreamEndPoint, connectingHolder.context);
@@ -92,15 +92,15 @@ public class ClientQuicConnectionManager extends QuicConnectionManager
         {
             LOG.debug("quiche cannot establish connection yet");
             quicConnection = null;
+
+            ByteBuffer sendBuffer = getByteBufferPool().acquire(LibQuiche.QUICHE_MIN_CLIENT_INITIAL_LEN, true);
+            BufferUtil.flipToFill(sendBuffer);
+            int sent = quicheConnection.send(sendBuffer);
+            LOG.debug("quiche wants to send {} byte(s)", sent);
+            sendBuffer.flip();
+
+            channelWrite(sendBuffer, peer);
         }
-
-        ByteBuffer sendBuffer = getByteBufferPool().acquire(LibQuiche.QUICHE_MIN_CLIENT_INITIAL_LEN, true);
-        BufferUtil.flipToFill(sendBuffer);
-        int sent = quicheConnection.send(sendBuffer);
-        LOG.debug("quiche wants to send {} byte(s)", sent);
-        sendBuffer.flip();
-
-        getCommandManager().channelWrite(getChannel(), sendBuffer, peer);
         return quicConnection;
     }
 
@@ -114,9 +114,8 @@ public class ClientQuicConnectionManager extends QuicConnectionManager
         //connection.nextTimeout(); // TODO quiche timeout handling is missing for pending connections
         buffer.flip();
         pendingConnections.put(target, new ConnectingHolder(connection, context, httpClientTransportOverQuic));
-        getCommandManager().channelWrite(getChannel(), buffer, target);
-        if (getCommandManager().needWrite())
-            wakeupSelector();
+        channelWrite(buffer, target);
+        wakeupSelectorIfNeeded();
     }
 
     private static class ConnectingHolder
