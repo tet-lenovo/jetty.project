@@ -32,6 +32,9 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.core.Is.is;
+
 public class End2EndClientTest
 {
     private Server server;
@@ -88,5 +91,12 @@ public class End2EndClientTest
         System.out.println("==========");
 
         client.stop();
+
+        assertThat(status, is(200));
+        assertThat(contentAsString, is("<html>\n" +
+            "\t<body>\n" +
+            "\t\tRequest served\n" +
+            "\t</body>\n" +
+            "</html>\n"));
     }
 }
