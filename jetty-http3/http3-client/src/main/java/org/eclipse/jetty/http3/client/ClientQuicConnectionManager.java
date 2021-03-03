@@ -17,7 +17,6 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.nio.ByteBuffer;
-import java.util.AbstractMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
@@ -51,13 +50,13 @@ public class ClientQuicConnectionManager extends QuicConnectionManager
     }
 
     @Override
-    protected Map.Entry<QuicConnection, Boolean> onNewConnection(ByteBuffer buffer, SocketAddress peer, QuicheConnectionId quicheConnectionId, QuicStreamEndPoint.Factory endpointFactory) throws IOException
+    protected QuicConnection onNewConnection(ByteBuffer buffer, SocketAddress peer, QuicheConnectionId quicheConnectionId, QuicStreamEndPoint.Factory endpointFactory) throws IOException
     {
         LOG.debug("got packet for a new connection");
 
         ConnectingHolder connectingHolder = pendingConnections.get(peer);
         if (connectingHolder == null)
-            return new AbstractMap.SimpleImmutableEntry<>(null, Boolean.FALSE);
+            return null;
 
         QuicheConnection quicheConnection = connectingHolder.quicheConnection;
         int remaining = buffer.remaining();
@@ -101,8 +100,8 @@ public class ClientQuicConnectionManager extends QuicConnectionManager
         LOG.debug("quiche wants to send {} byte(s)", sent);
         sendBuffer.flip();
 
-        boolean queued = getCommandManager().channelWrite(getChannel(), sendBuffer, peer);
-        return new AbstractMap.SimpleImmutableEntry<>(quicConnection, queued);
+        getCommandManager().channelWrite(getChannel(), sendBuffer, peer);
+        return quicConnection;
     }
 
     public void connect(InetSocketAddress target, Map<String, Object> context, HttpClientTransportOverQuic httpClientTransportOverQuic) throws IOException
@@ -115,10 +114,9 @@ public class ClientQuicConnectionManager extends QuicConnectionManager
         //connection.nextTimeout(); // TODO quiche timeout handling is missing for pending connections
         buffer.flip();
         pendingConnections.put(target, new ConnectingHolder(connection, context, httpClientTransportOverQuic));
-        boolean queued = getCommandManager().channelWrite(getChannel(), buffer, target);
-        //TODO changeInterest should be encapsulated
-        if (queued)
-            changeInterest(true);
+        getCommandManager().channelWrite(getChannel(), buffer, target);
+        if (getCommandManager().needWrite())
+            wakeupSelector();
     }
 
     private static class ConnectingHolder

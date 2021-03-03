@@ -38,52 +38,33 @@ public class CommandManager
         this.bufferPool = bufferPool;
     }
 
-    /**
-     * @return false if the command was immediately processed, true if it was queued.
-     */
-    public boolean channelWrite(DatagramChannel channel, ByteBuffer buffer, SocketAddress peer) throws IOException
+    public void channelWrite(DatagramChannel channel, ByteBuffer buffer, SocketAddress peer) throws IOException
     {
-        ChannelWriteCommand channelWriteCommand = new ChannelWriteCommand(buffer, channel, peer);
-        if (!channelWriteCommand.execute())
-        {
-            commands.offer(channelWriteCommand);
-            return true;
-        }
-        return false;
+        ChannelWriteCommand command = new ChannelWriteCommand(buffer, channel, peer);
+//        if (!command.execute())
+            commands.offer(command);
     }
 
-    /**
-     * @return false if the command was immediately processed, true if it was queued.
-     */
-    public boolean quicSend(QuicConnection connection, DatagramChannel channel) throws IOException
+    public void quicSend(QuicConnection connection, DatagramChannel channel) throws IOException
     {
-        QuicSendCommand quicSendCommand = new QuicSendCommand(channel, connection);
-        if (!quicSendCommand.execute())
-        {
-            commands.offer(quicSendCommand);
-            return true;
-        }
-        return false;
+        QuicSendCommand command = new QuicSendCommand(channel, connection);
+//        if (!command.execute())
+            commands.offer(command);
     }
 
-    /**
-     * @return false if the command was immediately processed, true if it was queued.
-     */
-    public boolean quicTimeout(QuicConnection quicConnection, DatagramChannel channel, boolean dispose) throws IOException
+    public void quicTimeout(QuicConnection quicConnection, DatagramChannel channel, boolean dispose) throws IOException
     {
-        QuicTimeoutCommand quicTimeoutCommand = new QuicTimeoutCommand(quicConnection, channel, dispose);
-        if (!quicTimeoutCommand.execute())
-        {
-            commands.offer(quicTimeoutCommand);
-            return true;
-        }
-        return false;
+        QuicTimeoutCommand command = new QuicTimeoutCommand(quicConnection, channel, dispose);
+//        if (!command.execute())
+            commands.offer(command);
     }
 
-    /**
-     * @return true if at least one command is left in the queue, false if the queue was depleted.
-     */
-    public boolean processQueue() throws IOException
+    public boolean needWrite()
+    {
+        return !commands.isEmpty();
+    }
+
+    public void processQueue() throws IOException
     {
         LOG.debug("processing commands : {}", commands);
         while (!commands.isEmpty())
@@ -95,10 +76,9 @@ public class CommandManager
             if (!completed)
             {
                 commands.offer(command);
-                return true;
+                return;
             }
         }
-        return false;
     }
 
     private abstract static class Command
