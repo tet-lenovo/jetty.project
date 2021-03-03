@@ -11,7 +11,7 @@
 // ========================================================================
 //
 
-package org.eclipse.jetty.http3.server;
+package org.eclipse.jetty.http3.client;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -21,21 +21,21 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.eclipse.jetty.http3.common.QuicConnection;
 import org.eclipse.jetty.http3.common.QuicStreamEndPoint;
 import org.eclipse.jetty.http3.quiche.QuicheStream;
-import org.eclipse.jetty.io.EofException;
 import org.eclipse.jetty.util.BufferUtil;
 import org.eclipse.jetty.util.thread.Scheduler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class QuicServerStreamEndPoint extends QuicStreamEndPoint
+public class ClientQuicStreamEndPoint extends QuicStreamEndPoint
 {
-    private static final Logger LOG = LoggerFactory.getLogger(QuicServerStreamEndPoint.class);
+    private static final Logger LOG = LoggerFactory.getLogger(ClientQuicStreamEndPoint.class);
 
     private final QuicConnection quicConnection;
+    //TODO: this atomic duplicates state that should be in FillInterest
     private final AtomicBoolean fillInterested = new AtomicBoolean();
     private final long streamId;
 
-    protected QuicServerStreamEndPoint(Scheduler scheduler, QuicConnection quicConnection, long streamId)
+    protected ClientQuicStreamEndPoint(Scheduler scheduler, QuicConnection quicConnection, long streamId)
     {
         super(scheduler);
         this.quicConnection = quicConnection;
@@ -58,9 +58,8 @@ public class QuicServerStreamEndPoint extends QuicStreamEndPoint
     {
         if (fillInterested.compareAndSet(true, false))
         {
-            LOG.debug("Fillable start");
+            LOG.debug("Fillable");
             getFillInterest().fillable();
-            LOG.debug("Fillable end");
         }
     }
 
@@ -71,6 +70,7 @@ public class QuicServerStreamEndPoint extends QuicStreamEndPoint
             return -1;
 
         QuicheStream quicheStream = quicConnection.quicReadableStream(streamId);
+        // TODO: there is a race condition here; between fill interest and the return 0
         if (quicheStream == null)
             return 0;
 
@@ -97,34 +97,13 @@ public class QuicServerStreamEndPoint extends QuicStreamEndPoint
         if (quicConnection.isQuicConnectionClosed())
             throw new IOException("connection is closed");
 
-        QuicheStream quicheStream = quicConnection.quicWritableStream(streamId);
-        if (quicheStream == null)
-            return false;
-
-        long flushed = 0L;
-        try
+        for (ByteBuffer buffer : buffers)
         {
-            for (ByteBuffer buffer : buffers)
-            {
-                flushed += quicheStream.write(buffer, false);
-            }
-            if (LOG.isDebugEnabled())
-                LOG.debug("flushed {} byte(s) - {}", flushed, this);
-        }
-        catch (IOException e)
-        {
-            throw new EofException(e);
-        }
-
-        if (flushed > 0)
-            notIdle();
-
-        for (ByteBuffer b : buffers)
-        {
-            if (!BufferUtil.isEmpty(b))
+            int toWrite = buffer.remaining();
+            int written = quicConnection.writeToStream(streamId, buffer);
+            if (written < toWrite)
                 return false;
         }
-
         return true;
     }
 

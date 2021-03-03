@@ -42,7 +42,7 @@ public class QuicClientConnector extends ContainerLifeCycle implements IClientCo
     private ByteBufferPool byteBufferPool;
     private Duration connectTimeout = Duration.ofSeconds(5);
     private Duration idleTimeout = Duration.ofSeconds(30);
-    private QuicClientConnectionManager quicConnectionManager;
+    private ClientQuicConnectionManager quicConnectionManager;
 
     public QuicClientConnector(String httpVersion)
     {
@@ -185,7 +185,7 @@ public class QuicClientConnector extends ContainerLifeCycle implements IClientCo
             setByteBufferPool(new MappedByteBufferPool());
         super.doStart();
 
-        quicConnectionManager = new QuicClientConnectionManager(this, executor, scheduler, byteBufferPool, (quicConnection, streamId) -> new QuicClientStreamEndPoint(getScheduler(), quicConnection, streamId), quicheConfig);
+        quicConnectionManager = new ClientQuicConnectionManager(this, executor, scheduler, byteBufferPool, (quicConnection, streamId) -> new ClientQuicStreamEndPoint(getScheduler(), quicConnection, streamId), quicheConfig);
         quicConnectionManager.start();
     }
 

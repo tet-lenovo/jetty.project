@@ -37,11 +37,11 @@ import org.eclipse.jetty.util.thread.Scheduler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class QuicServerConnectionManager extends QuicConnectionManager
+public class ServerQuicConnectionManager extends QuicConnectionManager
 {
-    private static final Logger LOG = LoggerFactory.getLogger(QuicServerConnectionManager.class);
+    private static final Logger LOG = LoggerFactory.getLogger(ServerQuicConnectionManager.class);
 
-    public QuicServerConnectionManager(LifeCycle lifeCycle, Executor executor, Scheduler scheduler, ByteBufferPool bufferPool, QuicStreamEndPoint.Factory endpointFactory, QuicheConfig quicheConfig) throws IOException
+    public ServerQuicConnectionManager(LifeCycle lifeCycle, Executor executor, Scheduler scheduler, ByteBufferPool bufferPool, QuicStreamEndPoint.Factory endpointFactory, QuicheConfig quicheConfig) throws IOException
     {
         super(lifeCycle, executor, scheduler, bufferPool, endpointFactory, quicheConfig);
     }

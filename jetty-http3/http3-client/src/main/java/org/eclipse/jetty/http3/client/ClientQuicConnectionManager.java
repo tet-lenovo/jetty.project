@@ -39,13 +39,13 @@ import org.eclipse.jetty.util.thread.Scheduler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class QuicClientConnectionManager extends QuicConnectionManager
+public class ClientQuicConnectionManager extends QuicConnectionManager
 {
-    private static final Logger LOG = LoggerFactory.getLogger(QuicClientConnectionManager.class);
+    private static final Logger LOG = LoggerFactory.getLogger(ClientQuicConnectionManager.class);
 
     private final Map<SocketAddress, ConnectingHolder> pendingConnections = new ConcurrentHashMap<>();
 
-    public QuicClientConnectionManager(LifeCycle lifeCycle, Executor executor, Scheduler scheduler, ByteBufferPool bufferPool, QuicStreamEndPoint.Factory endpointFactory, QuicheConfig quicheConfig) throws IOException
+    public ClientQuicConnectionManager(LifeCycle lifeCycle, Executor executor, Scheduler scheduler, ByteBufferPool bufferPool, QuicStreamEndPoint.Factory endpointFactory, QuicheConfig quicheConfig) throws IOException
     {
         super(lifeCycle, executor, scheduler, bufferPool, endpointFactory, quicheConfig);
     }

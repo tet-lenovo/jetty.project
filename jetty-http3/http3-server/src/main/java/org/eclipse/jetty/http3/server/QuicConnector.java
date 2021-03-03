@@ -94,7 +94,7 @@ public class QuicConnector extends AbstractNetworkConnector
         else
             quicheConfig.setApplicationProtos(protocols);
 
-        quicConnectionManager = new QuicServerConnectionManager(this, getExecutor(), getScheduler(), getByteBufferPool(), this::createQuicStreamEndPoint, quicheConfig);
+        quicConnectionManager = new ServerQuicConnectionManager(this, getExecutor(), getScheduler(), getByteBufferPool(), this::createQuicStreamEndPoint, quicheConfig);
         quicConnectionManager.getChannel().bind(bindAddress());
     }
 
@@ -109,9 +109,9 @@ public class QuicConnector extends AbstractNetworkConnector
         quicheConfig = null;
     }
 
-    public QuicServerStreamEndPoint createQuicStreamEndPoint(QuicConnection quicConnection, long streamId)
+    public ServerQuicStreamEndPoint createQuicStreamEndPoint(QuicConnection quicConnection, long streamId)
     {
-        QuicServerStreamEndPoint endPoint = new QuicServerStreamEndPoint(getScheduler(), quicConnection, streamId);
+        ServerQuicStreamEndPoint endPoint = new ServerQuicStreamEndPoint(getScheduler(), quicConnection, streamId);
         String negotiatedProtocol = quicConnection.getNegotiatedProtocol();
         ConnectionFactory connectionFactory = getConnectionFactory(negotiatedProtocol);
         if (connectionFactory == null)
