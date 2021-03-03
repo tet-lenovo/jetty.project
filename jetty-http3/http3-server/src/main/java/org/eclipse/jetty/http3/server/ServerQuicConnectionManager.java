@@ -45,7 +45,7 @@ public class ServerQuicConnectionManager extends QuicConnectionManager
     }
 
     @Override
-    protected QuicConnection onNewConnection(ByteBuffer buffer, SocketAddress peer, QuicheConnectionId connectionId, QuicStreamEndPoint.Factory endpointFactory) throws IOException
+    protected QuicConnection createConnection(ByteBuffer buffer, InetSocketAddress peer, QuicheConnectionId connectionId) throws IOException
     {
         ByteBufferPool bufferPool = getByteBufferPool();
         DatagramChannel channel = getChannel();
@@ -74,7 +74,7 @@ public class ServerQuicConnectionManager extends QuicConnectionManager
         else
         {
             LOG.debug("new connection accepted");
-            quicConnection = new QuicConnection(acceptedQuicheConnection, (InetSocketAddress)channel.getLocalAddress(), (InetSocketAddress)peer, endpointFactory);
+            quicConnection = new QuicConnection(acceptedQuicheConnection, (InetSocketAddress)channel.getLocalAddress(), peer, getEndpointFactory());
             commandManager.quicSend(quicConnection, channel);
         }
         return quicConnection;

@@ -50,7 +50,7 @@ public class ClientQuicConnectionManager extends QuicConnectionManager
     }
 
     @Override
-    protected QuicConnection onNewConnection(ByteBuffer buffer, SocketAddress peer, QuicheConnectionId quicheConnectionId, QuicStreamEndPoint.Factory endpointFactory) throws IOException
+    protected QuicConnection createConnection(ByteBuffer buffer, InetSocketAddress peer, QuicheConnectionId quicheConnectionId) throws IOException
     {
         LOG.debug("got packet for a new connection");
 
@@ -68,7 +68,7 @@ public class ClientQuicConnectionManager extends QuicConnectionManager
         {
             LOG.debug("quiche established connection {}", quicheConnectionId);
             pendingConnections.remove(peer);
-            quicConnection = new QuicConnection(quicheConnection, (InetSocketAddress)getChannel().getLocalAddress(), (InetSocketAddress)peer, endpointFactory);
+            quicConnection = new QuicConnection(quicheConnection, (InetSocketAddress)getChannel().getLocalAddress(), peer, getEndpointFactory());
 
             QuicStreamEndPoint quicStreamEndPoint = quicConnection.getOrCreateStreamEndPoint(4); // TODO generate a proper stream ID
             Connection connection = connectingHolder.httpClientTransportOverQuic.newConnection(quicStreamEndPoint, connectingHolder.context);

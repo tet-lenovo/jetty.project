@@ -15,7 +15,6 @@ package org.eclipse.jetty.http3.common;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.net.SocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.DatagramChannel;
 import java.nio.channels.SelectionKey;
@@ -207,14 +206,14 @@ public abstract class QuicConnectionManager
 
         ByteBuffer buffer = bufferPool.acquire(LibQuiche.QUICHE_MIN_CLIENT_INITIAL_LEN, true);
         BufferUtil.flipToFill(buffer);
-        SocketAddress peer = channel.receive(buffer);
+        InetSocketAddress peer = (InetSocketAddress)channel.receive(buffer);
         buffer.flip();
 
         QuicheConnectionId connectionId = QuicheConnectionId.fromPacket(buffer);
         QuicConnection connection = connections.get(connectionId);
         if (connection == null)
         {
-            connection = onNewConnection(buffer, peer, connectionId, endpointFactory);
+            connection = createConnection(buffer, peer, connectionId);
             if (connection != null)
                 connections.put(connectionId, connection);
         }
@@ -222,7 +221,7 @@ public abstract class QuicConnectionManager
         {
             LOG.debug("got packet for an existing connection: " + connectionId + " - buffer: p=" + buffer.position() + " r=" + buffer.remaining());
             // existing connection
-            connection.quicRecv(buffer, (InetSocketAddress)peer);
+            connection.quicRecv(buffer, peer);
             // Bug? quiche apparently does not send the stream frames after the connection has been closed
             // -> use a mark-as-closed mechanism and first send the data then close
             commandManager.quicSend(connection, channel);
@@ -237,13 +236,6 @@ public abstract class QuicConnectionManager
         commandManager.processQueue();
     }
 
-    protected abstract QuicConnection onNewConnection(ByteBuffer buffer, SocketAddress peer, QuicheConnectionId connectionId, QuicStreamEndPoint.Factory endpointFactory) throws IOException;
-
-    public CommandManager getCommandManager()
-    {
-        return commandManager;
-    }
-
     private void changeInterest(boolean needWrite)
     {
         int ops = SelectionKey.OP_READ | (needWrite ? SelectionKey.OP_WRITE : 0);
@@ -256,16 +248,28 @@ public abstract class QuicConnectionManager
         selectionKey.interestOps(ops);
     }
 
-    protected void wakeupSelector()
-    {
-        selector.wakeup();
-    }
-
     private static String interestToString(int ops)
     {
         String interest = "READ";
         if ((ops & SelectionKey.OP_WRITE) == SelectionKey.OP_WRITE)
             interest += "|WRITE";
         return interest;
+    }
+
+    protected abstract QuicConnection createConnection(ByteBuffer buffer, InetSocketAddress peer, QuicheConnectionId connectionId) throws IOException;
+
+    protected CommandManager getCommandManager()
+    {
+        return commandManager;
+    }
+
+    protected QuicStreamEndPoint.Factory getEndpointFactory()
+    {
+        return endpointFactory;
+    }
+
+    protected void wakeupSelector()
+    {
+        selector.wakeup();
     }
 }
