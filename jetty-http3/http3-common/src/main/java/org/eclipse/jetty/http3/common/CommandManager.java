@@ -202,10 +202,10 @@ public class CommandManager
                     buffer = null;
                     return true;
                 }
-                LOG.debug("quiche wants to send {} bytes", quicSent);
+                LOG.debug("quiche wants to send {} byte(s)", quicSent);
                 buffer.flip();
                 int channelSent = channel.send(buffer, peer);
-                LOG.debug("channel sent {} bytes", channelSent);
+                LOG.debug("channel sent {} byte(s)", channelSent);
                 if (channelSent == 0)
                 {
                     LOG.debug("executed {} command; channel sending(2) could not be done", cmdName);
@@ -239,6 +239,7 @@ public class CommandManager
                 LOG.debug("executed channel write command; channel sending could not be done");
                 return false;
             }
+            LOG.debug("channel sent {} byte(s)", sent);
             bufferPool.release(buffer);
             LOG.debug("executed channel write command; all done");
             return true;

@@ -18,6 +18,8 @@ import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.DatagramChannel;
+import java.util.AbstractMap;
+import java.util.Map;
 import java.util.concurrent.Executor;
 
 import org.eclipse.jetty.http3.common.CommandManager;
@@ -45,7 +47,7 @@ public class QuicServerConnectionManager extends QuicConnectionManager
     }
 
     @Override
-    protected QuicConnection onNewConnection(ByteBuffer buffer, SocketAddress peer, QuicheConnectionId connectionId, QuicStreamEndPoint.Factory endpointFactory) throws IOException
+    protected Map.Entry<QuicConnection, Boolean> onNewConnection(ByteBuffer buffer, SocketAddress peer, QuicheConnectionId connectionId, QuicStreamEndPoint.Factory endpointFactory) throws IOException
     {
         ByteBufferPool bufferPool = getByteBufferPool();
         DatagramChannel channel = getChannel();
@@ -53,7 +55,7 @@ public class QuicServerConnectionManager extends QuicConnectionManager
         CommandManager commandManager = getCommandManager();
 
         boolean needWrite;
-        QuicConnection connection = null;
+        QuicConnection quicConnection;
         LOG.debug("got packet for a new connection");
         // new connection
         QuicheConnection acceptedQuicheConnection = QuicheConnection.tryAccept(quicheConfig, peer, buffer);
@@ -71,15 +73,14 @@ public class QuicServerConnectionManager extends QuicConnectionManager
                 bufferPool.release(negociationBuffer);
                 needWrite = false;
             }
+            quicConnection = null;
         }
         else
         {
             LOG.debug("new connection accepted");
-            connection = new QuicConnection(acceptedQuicheConnection, (InetSocketAddress)channel.getLocalAddress(), (InetSocketAddress)peer, endpointFactory);
-            needWrite = commandManager.quicSend(connection, channel);
+            quicConnection = new QuicConnection(acceptedQuicheConnection, (InetSocketAddress)channel.getLocalAddress(), (InetSocketAddress)peer, endpointFactory);
+            needWrite = commandManager.quicSend(quicConnection, channel);
         }
-
-        changeInterest(needWrite);
-        return connection;
+        return new AbstractMap.SimpleImmutableEntry<>(quicConnection, needWrite);
     }
 }

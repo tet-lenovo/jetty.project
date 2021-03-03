@@ -150,33 +150,39 @@ public abstract class QuicConnectionManager
         if (!lifeCycle.isRunning())
             throw new InterruptedException("Container stopped");
 
+        boolean needWrite = false;
         if (selected == 0)
         {
             LOG.debug("no selected key; a QUIC connection has timed out");
-            boolean needWrite = processTimeout();
-            int ops = SelectionKey.OP_READ | (needWrite ? SelectionKey.OP_WRITE : 0);
-            LOG.debug("setting key interest to " + ops);
-            selectionKey.interestOps(ops);
-            return;
+            needWrite |= processTimeout();
         }
-
-        Iterator<SelectionKey> selectorIt = selector.selectedKeys().iterator();
-        while (selectorIt.hasNext())
+        else
         {
-            SelectionKey key = selectorIt.next();
-            selectorIt.remove();
-            LOG.debug("Processing selected key {}", key);
-
-            if (key.isReadable())
+            Iterator<SelectionKey> selectorIt = selector.selectedKeys().iterator();
+            while (selectorIt.hasNext())
             {
-                processReadableKey();
-            }
+                SelectionKey key = selectorIt.next();
+                selectorIt.remove();
+                LOG.debug("Processing selected key {}", key);
 
-            if (key.isWritable())
-            {
-                processWritableKey();
+                boolean readable = key.isReadable();
+                LOG.debug("key is readable? {}", readable);
+                if (readable)
+                {
+                    needWrite |= processReadableKey();
+                }
+
+                boolean writable = key.isWritable();
+                LOG.debug("key is writable? {}", writable);
+                if (writable)
+                {
+                    needWrite |= processWritableKey();
+                }
+
+                LOG.debug("Processed selected key {}", key);
             }
         }
+        changeInterest(needWrite);
     }
 
     private boolean processTimeout() throws IOException
@@ -202,7 +208,7 @@ public abstract class QuicConnectionManager
         return needWrite;
     }
 
-    private void processReadableKey() throws IOException
+    private boolean processReadableKey() throws IOException
     {
         ByteBufferPool bufferPool = getByteBufferPool();
 
@@ -211,11 +217,14 @@ public abstract class QuicConnectionManager
         SocketAddress peer = channel.receive(buffer);
         buffer.flip();
 
+        boolean needWrite;
         QuicheConnectionId connectionId = QuicheConnectionId.fromPacket(buffer);
         QuicConnection connection = connections.get(connectionId);
         if (connection == null)
         {
-            connection = onNewConnection(buffer, peer, connectionId, endpointFactory);
+            Map.Entry<QuicConnection, Boolean> entry = onNewConnection(buffer, peer, connectionId, endpointFactory);
+            connection = entry.getKey();
+            needWrite = entry.getValue();
             if (connection != null)
                 connections.put(connectionId, connection);
         }
@@ -226,21 +235,20 @@ public abstract class QuicConnectionManager
             connection.quicRecv(buffer, (InetSocketAddress)peer);
             // Bug? quiche apparently does not send the stream frames after the connection has been closed
             // -> use a mark-as-closed mechanism and first send the data then close
-            boolean needWrite = commandManager.quicSend(connection, channel);
+            needWrite = commandManager.quicSend(connection, channel);
             if (connection.isMarkedClosed() && connection.closeQuicConnection())
                 needWrite |= commandManager.quicSend(connection, channel);
-            changeInterest(needWrite);
         }
         bufferPool.release(buffer);
+        return needWrite;
     }
 
-    private void processWritableKey() throws IOException
+    private boolean processWritableKey() throws IOException
     {
-        boolean needWrite = commandManager.processQueue();
-        changeInterest(needWrite);
+        return commandManager.processQueue();
     }
 
-    protected abstract QuicConnection onNewConnection(ByteBuffer buffer, SocketAddress peer, QuicheConnectionId connectionId, QuicStreamEndPoint.Factory endpointFactory) throws IOException;
+    protected abstract Map.Entry<QuicConnection, Boolean> onNewConnection(ByteBuffer buffer, SocketAddress peer, QuicheConnectionId connectionId, QuicStreamEndPoint.Factory endpointFactory) throws IOException;
 
     public CommandManager getCommandManager()
     {
@@ -250,7 +258,13 @@ public abstract class QuicConnectionManager
     protected void changeInterest(boolean needWrite)
     {
         int ops = SelectionKey.OP_READ | (needWrite ? SelectionKey.OP_WRITE : 0);
-        LOG.debug("setting key interest to " + ops);
+        if (LOG.isDebugEnabled())
+        {
+            String interest = "READ";
+            if ((ops & SelectionKey.OP_WRITE) == SelectionKey.OP_WRITE)
+                interest += "|WRITE";
+            LOG.debug("setting key interest to {}", interest);
+        }
         selectionKey.interestOps(ops);
     }
 }

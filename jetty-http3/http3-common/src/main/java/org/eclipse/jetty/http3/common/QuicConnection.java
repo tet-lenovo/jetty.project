@@ -86,7 +86,7 @@ public class QuicConnection
         quicheConnection.recv(buffer);
         boolean establishedAfter = quicheConnection.isConnectionEstablished();
         if (!establishedBefore && establishedAfter)
-            LOG.debug("newly established connection, negotiated ALPN protocol : {}", quicheConnection.getNegotiatedProtocol());
+            LOG.debug("newly established connection, negotiated ALPN protocol: '{}'", quicheConnection.getNegotiatedProtocol());
 
         if (establishedAfter)
         {

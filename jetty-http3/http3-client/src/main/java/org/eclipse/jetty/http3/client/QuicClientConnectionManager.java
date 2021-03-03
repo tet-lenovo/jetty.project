@@ -17,6 +17,7 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.nio.ByteBuffer;
+import java.util.AbstractMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
@@ -35,9 +36,13 @@ import org.eclipse.jetty.util.BufferUtil;
 import org.eclipse.jetty.util.Promise;
 import org.eclipse.jetty.util.component.LifeCycle;
 import org.eclipse.jetty.util.thread.Scheduler;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class QuicClientConnectionManager extends QuicConnectionManager
 {
+    private static final Logger LOG = LoggerFactory.getLogger(QuicClientConnectionManager.class);
+
     private final Map<SocketAddress, ConnectingHolder> pendingConnections = new ConcurrentHashMap<>();
 
     public QuicClientConnectionManager(LifeCycle lifeCycle, Executor executor, Scheduler scheduler, ByteBufferPool bufferPool, QuicStreamEndPoint.Factory endpointFactory, QuicheConfig quicheConfig) throws IOException
@@ -46,18 +51,23 @@ public class QuicClientConnectionManager extends QuicConnectionManager
     }
 
     @Override
-    protected QuicConnection onNewConnection(ByteBuffer buffer, SocketAddress peer, QuicheConnectionId quicheConnectionId, QuicStreamEndPoint.Factory endpointFactory) throws IOException
+    protected Map.Entry<QuicConnection, Boolean> onNewConnection(ByteBuffer buffer, SocketAddress peer, QuicheConnectionId quicheConnectionId, QuicStreamEndPoint.Factory endpointFactory) throws IOException
     {
+        LOG.debug("got packet for a new connection");
+
         ConnectingHolder connectingHolder = pendingConnections.get(peer);
         if (connectingHolder == null)
-            return null;
+            return new AbstractMap.SimpleImmutableEntry<>(null, Boolean.FALSE);
 
         QuicheConnection quicheConnection = connectingHolder.quicheConnection;
-        quicheConnection.recv(buffer);
+        int remaining = buffer.remaining();
+        int recv = quicheConnection.recv(buffer);
+        LOG.debug("quiche consumed {}/{} bytes", recv, remaining);
 
-        QuicConnection quicConnection = null;
+        QuicConnection quicConnection;
         if (quicheConnection.isConnectionEstablished())
         {
+            LOG.debug("quiche established connection {}", quicheConnectionId);
             pendingConnections.remove(peer);
             quicConnection = new QuicConnection(quicheConnection, (InetSocketAddress)getChannel().getLocalAddress(), (InetSocketAddress)peer, endpointFactory);
 
@@ -79,16 +89,20 @@ public class QuicClientConnectionManager extends QuicConnectionManager
                 promise.failed(t);
             }
         }
+        else
+        {
+            LOG.debug("quiche cannot establish connection yet");
+            quicConnection = null;
+        }
 
         ByteBuffer sendBuffer = getByteBufferPool().acquire(LibQuiche.QUICHE_MIN_CLIENT_INITIAL_LEN, true);
         BufferUtil.flipToFill(sendBuffer);
-        quicheConnection.send(sendBuffer);
+        int sent = quicheConnection.send(sendBuffer);
+        LOG.debug("quiche wants to send {} byte(s)", sent);
         sendBuffer.flip();
 
         boolean queued = getCommandManager().channelWrite(getChannel(), sendBuffer, peer);
-        if (queued)
-            changeInterest(true);
-        return quicConnection;
+        return new AbstractMap.SimpleImmutableEntry<>(quicConnection, queued);
     }
 
     public void connect(InetSocketAddress target, Map<String, Object> context, HttpClientTransportOverQuic httpClientTransportOverQuic) throws IOException
@@ -102,6 +116,7 @@ public class QuicClientConnectionManager extends QuicConnectionManager
         buffer.flip();
         pendingConnections.put(target, new ConnectingHolder(connection, context, httpClientTransportOverQuic));
         boolean queued = getCommandManager().channelWrite(getChannel(), buffer, target);
+        //TODO changeInterest should be encapsulated
         if (queued)
             changeInterest(true);
     }
