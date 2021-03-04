@@ -20,6 +20,7 @@ import java.nio.ByteBuffer;
 import java.nio.channels.DatagramChannel;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
+import java.util.Collection;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -227,8 +228,11 @@ public abstract class QuicConnectionManager
         else
         {
             LOG.debug("got packet for an existing connection: " + connectionId + " - buffer: p=" + buffer.position() + " r=" + buffer.remaining());
-            // existing connection
-            quicConnection.quicRecv(buffer, peer);
+            Collection<QuicStreamEndPoint> endPoints = quicConnection.quicRecv(buffer, peer);
+            for (QuicStreamEndPoint endPoint : endPoints)
+            {
+                endPoint.onFillable();
+            }
             commandManager.quicSend(quicConnection);
         }
         bufferPool.release(buffer);

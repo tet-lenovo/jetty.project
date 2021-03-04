@@ -16,6 +16,8 @@ package org.eclipse.jetty.http3.common;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -76,8 +78,9 @@ public class QuicConnection
     /**
      * @param buffer cipher text
      * @param peer address of the peer who sent the packet
+     * @return a collection of QuicStreamEndPoints that need to be notified they have data to read
      */
-    public void quicRecv(ByteBuffer buffer, InetSocketAddress peer) throws IOException
+    public Collection<QuicStreamEndPoint> quicRecv(ByteBuffer buffer, InetSocketAddress peer) throws IOException
     {
         LOG.debug("handling packet " + BufferUtil.toDetailString(buffer));
         remoteAddress = peer;
@@ -88,6 +91,7 @@ public class QuicConnection
         if (!establishedBefore && establishedAfter)
             LOG.debug("newly established connection, negotiated ALPN protocol: '{}'", quicheConnection.getNegotiatedProtocol());
 
+        Collection<QuicStreamEndPoint> result = new ArrayList<>();
         if (establishedAfter)
         {
             Iterator<QuicheStream> it = quicheConnection.readableStreamsIterator();
@@ -98,9 +102,10 @@ public class QuicConnection
                 LOG.debug("stream {} is readable", streamId);
 
                 QuicStreamEndPoint streamEndPoint = getOrCreateStreamEndPoint(streamId);
-                streamEndPoint.onFillable();
+                result.add(streamEndPoint);
             }
         }
+        return result;
     }
 
     public String getNegotiatedProtocol()
