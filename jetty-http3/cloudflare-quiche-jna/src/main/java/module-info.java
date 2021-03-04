@@ -11,7 +11,8 @@
 // ========================================================================
 //
 
-module org.eclipse.jetty.http3.quiche
+// The module must be open to allow JNA to find the native lib.
+open module org.eclipse.jetty.http3.quiche
 {
     exports org.eclipse.jetty.http3.quiche.ffi;
     exports org.eclipse.jetty.http3.quiche;
