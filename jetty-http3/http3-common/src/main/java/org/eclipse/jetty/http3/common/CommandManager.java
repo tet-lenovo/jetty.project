@@ -77,7 +77,7 @@ public class CommandManager
             LOG.debug("executed command; completed? {}", completed);
             if (!completed)
             {
-                commands.offer(command);
+                commands.offerFirst(command);
                 return;
             }
         }
