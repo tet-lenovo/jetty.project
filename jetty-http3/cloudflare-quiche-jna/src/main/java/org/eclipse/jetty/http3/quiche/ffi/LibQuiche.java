@@ -31,11 +31,8 @@ public interface LibQuiche extends Library
     // It needs to be reviewed each time the native lib version changes.
     String EXPECTED_QUICHE_VERSION = "0.7.0";
 
-    // load the native lib named "quiche-linux-amd64"
-    LibQuiche INSTANCE = Native.load("quiche-" +
-            System.getProperty("os.name").toLowerCase().replace(" ", "") + "-" +
-            System.getProperty("os.arch").toLowerCase(),
-        LibQuiche.class);
+    // load the native lib
+    LibQuiche INSTANCE = Native.load("quiche", LibQuiche.class);
 
     class Logging
     {
