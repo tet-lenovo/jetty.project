@@ -97,7 +97,10 @@ public class QuicStreamEndPoint extends AbstractEndPoint
         {
             for (ByteBuffer buffer : buffers)
             {
-                flushed += quicConnection.writeToStream(streamId, buffer);
+                int written = quicConnection.writeToStream(streamId, buffer);
+                flushed += written;
+                if (buffer.remaining() != 0)
+                    break;
             }
             if (LOG.isDebugEnabled())
                 LOG.debug("flushed {} byte(s) - {}", flushed, this);
