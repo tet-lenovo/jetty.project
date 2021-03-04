@@ -45,7 +45,6 @@ public abstract class QuicConnectionManager
     private final Executor executor;
     private final Scheduler scheduler;
     private final ByteBufferPool bufferPool;
-    private final QuicStreamEndPoint.Factory endpointFactory;
 
     private final Map<QuicheConnectionId, QuicConnection> connections = new ConcurrentHashMap<>();
     private CommandManager commandManager;
@@ -54,13 +53,12 @@ public abstract class QuicConnectionManager
     private SelectionKey selectionKey;
     private QuicheConfig quicheConfig;
 
-    public QuicConnectionManager(LifeCycle lifeCycle, Executor executor, Scheduler scheduler, ByteBufferPool bufferPool, QuicStreamEndPoint.Factory endpointFactory, QuicheConfig quicheConfig) throws IOException
+    public QuicConnectionManager(LifeCycle lifeCycle, Executor executor, Scheduler scheduler, ByteBufferPool bufferPool, QuicheConfig quicheConfig) throws IOException
     {
         this.lifeCycle = lifeCycle;
         this.executor = executor;
         this.scheduler = scheduler;
         this.bufferPool = bufferPool;
-        this.endpointFactory = endpointFactory;
 
         this.selector = Selector.open();
         this.channel = DatagramChannel.open();
@@ -262,11 +260,6 @@ public abstract class QuicConnectionManager
     }
 
     protected abstract QuicConnection createConnection(ByteBuffer buffer, InetSocketAddress peer, QuicheConnectionId connectionId) throws IOException;
-
-    protected QuicStreamEndPoint.Factory getEndpointFactory()
-    {
-        return endpointFactory;
-    }
 
     protected InetSocketAddress getLocalAddress() throws IOException
     {

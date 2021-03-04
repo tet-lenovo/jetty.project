@@ -36,10 +36,12 @@ import org.slf4j.LoggerFactory;
 public class ServerQuicConnectionManager extends QuicConnectionManager
 {
     private static final Logger LOG = LoggerFactory.getLogger(ServerQuicConnectionManager.class);
+    private final QuicStreamEndPoint.Factory endpointFactory;
 
-    public ServerQuicConnectionManager(LifeCycle lifeCycle, Executor executor, Scheduler scheduler, ByteBufferPool bufferPool, QuicStreamEndPoint.Factory endpointFactory, QuicheConfig quicheConfig) throws IOException
+    public ServerQuicConnectionManager(LifeCycle lifeCycle, Executor executor, Scheduler scheduler, ByteBufferPool bufferPool, QuicheConfig quicheConfig, QuicStreamEndPoint.Factory endpointFactory) throws IOException
     {
-        super(lifeCycle, executor, scheduler, bufferPool, endpointFactory, quicheConfig);
+        super(lifeCycle, executor, scheduler, bufferPool, quicheConfig);
+        this.endpointFactory = endpointFactory;
     }
 
     @Override
@@ -77,7 +79,7 @@ public class ServerQuicConnectionManager extends QuicConnectionManager
         else
         {
             LOG.debug("new connection accepted");
-            quicConnection = new QuicConnection(acceptedQuicheConnection, getLocalAddress(), peer, getEndpointFactory());
+            quicConnection = new QuicConnection(acceptedQuicheConnection, getLocalAddress(), peer, endpointFactory);
         }
         return quicConnection;
     }

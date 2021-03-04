@@ -43,10 +43,12 @@ public class ClientQuicConnectionManager extends QuicConnectionManager
     private static final Logger LOG = LoggerFactory.getLogger(ClientQuicConnectionManager.class);
 
     private final Map<SocketAddress, ConnectingHolder> pendingConnections = new ConcurrentHashMap<>();
+    private final QuicStreamEndPoint.Factory endpointFactory;
 
-    public ClientQuicConnectionManager(LifeCycle lifeCycle, Executor executor, Scheduler scheduler, ByteBufferPool bufferPool, QuicStreamEndPoint.Factory endpointFactory, QuicheConfig quicheConfig) throws IOException
+    public ClientQuicConnectionManager(LifeCycle lifeCycle, Executor executor, Scheduler scheduler, ByteBufferPool bufferPool, QuicheConfig quicheConfig, QuicStreamEndPoint.Factory endpointFactory) throws IOException
     {
-        super(lifeCycle, executor, scheduler, bufferPool, endpointFactory, quicheConfig);
+        super(lifeCycle, executor, scheduler, bufferPool, quicheConfig);
+        this.endpointFactory = endpointFactory;
     }
 
     @Override
@@ -68,7 +70,7 @@ public class ClientQuicConnectionManager extends QuicConnectionManager
         {
             LOG.debug("quiche established connection {}", quicheConnectionId);
             pendingConnections.remove(peer);
-            quicConnection = new QuicConnection(quicheConnection, getLocalAddress(), peer, getEndpointFactory());
+            quicConnection = new QuicConnection(quicheConnection, getLocalAddress(), peer, endpointFactory);
 
             QuicStreamEndPoint quicStreamEndPoint = quicConnection.getOrCreateStreamEndPoint(4); // TODO generate a proper stream ID
             Connection connection = connectingHolder.httpClientTransportOverQuic.newConnection(quicStreamEndPoint, connectingHolder.context);
