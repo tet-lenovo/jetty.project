@@ -123,6 +123,7 @@ public class QuicConnector extends AbstractNetworkConnector
         }
         Connection connection = connectionFactory.newConnection(this, endPoint);
         endPoint.setConnection(connection);
+        endPoint.onOpen();
         connection.onOpen();
         return endPoint;
     }
