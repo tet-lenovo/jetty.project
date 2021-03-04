@@ -44,21 +44,21 @@ public class CommandManager
     {
         ChannelWriteCommand command = new ChannelWriteCommand(buffer, channel, peer);
 //        if (!command.execute())
-            commands.offer(command);
+        commands.offer(command);
     }
 
     public void quicSend(QuicConnection connection) throws IOException
     {
         QuicSendCommand command = new QuicSendCommand(channel, connection);
 //        if (!command.execute())
-            commands.offer(command);
+        commands.offer(command);
     }
 
     public void quicTimeout(QuicConnection quicConnection, boolean dispose) throws IOException
     {
         QuicTimeoutCommand command = new QuicTimeoutCommand(quicConnection, channel, dispose);
 //        if (!command.execute())
-            commands.offer(command);
+        commands.offer(command);
     }
 
     public boolean needWrite()
