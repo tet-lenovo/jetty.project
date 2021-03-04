@@ -18,7 +18,6 @@ import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import org.eclipse.jetty.http3.quiche.QuicheStream;
 import org.eclipse.jetty.io.AbstractEndPoint;
 import org.eclipse.jetty.io.EofException;
 import org.eclipse.jetty.util.BufferUtil;
@@ -70,14 +69,9 @@ public class QuicStreamEndPoint extends AbstractEndPoint
         if (quicConnection.isQuicConnectionClosed())
             return -1;
 
-        QuicheStream quicheStream = quicConnection.quicReadableStream(streamId);
-        // TODO: there is a race condition here; between fill interest and the return 0
-        if (quicheStream == null)
-            return 0;
-
         int pos = BufferUtil.flipToFill(buffer);
-        int read = quicheStream.read(buffer);
-        if (quicheStream.isReceivedFin())
+        int read = quicConnection.readFromStream(streamId, buffer);
+        if (quicConnection.isFinished(streamId))
             shutdownInput();
 
         BufferUtil.flipToFlush(buffer, pos);

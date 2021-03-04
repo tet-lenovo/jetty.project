@@ -160,32 +160,18 @@ public class QuicConnection
         return System.nanoTime() - sendTimestampInNs >= sendTimeoutInNs;
     }
 
-    public QuicheStream quicWritableStream(long streamId)
-    {
-        Iterator<QuicheStream> it = quicheConnection.writableStreamsIterator();
-        while (it.hasNext())
-        {
-            QuicheStream stream = it.next();
-            if (stream.getStreamId() == streamId)
-                return stream;
-        }
-        return null;
-    }
-
-    public QuicheStream quicReadableStream(long streamId)
-    {
-        Iterator<QuicheStream> it = quicheConnection.readableStreamsIterator();
-        while (it.hasNext())
-        {
-            QuicheStream stream = it.next();
-            if (stream.getStreamId() == streamId)
-                return stream;
-        }
-        return null;
-    }
-
     public int writeToStream(long streamId, ByteBuffer buffer) throws IOException
     {
         return quicheConnection.writeToStream(streamId, buffer);
+    }
+
+    public int readFromStream(long streamId, ByteBuffer buffer) throws IOException
+    {
+        return quicheConnection.readFromStream(streamId, buffer);
+    }
+
+    public boolean isFinished(long streamId)
+    {
+        return quicheConnection.isStreamFinished(streamId);
     }
 }

@@ -26,6 +26,7 @@ import java.util.List;
 
 import com.sun.jna.ptr.PointerByReference;
 import org.eclipse.jetty.http3.quiche.ffi.LibQuiche;
+import org.eclipse.jetty.http3.quiche.ffi.bool_pointer;
 import org.eclipse.jetty.http3.quiche.ffi.size_t;
 import org.eclipse.jetty.http3.quiche.ffi.size_t_pointer;
 import org.eclipse.jetty.http3.quiche.ffi.ssize_t;
@@ -225,7 +226,7 @@ public class QuicheConnection
             token = mintToken(dcid, (int)dcid_len.getValue(), peer);
 
             byte[] newCid = new byte[QUICHE_MAX_CONN_ID_LEN];
-            gen_cid(SECURE_RANDOM, newCid);
+            SECURE_RANDOM.nextBytes(newCid);
 
             ssize_t generated = INSTANCE.quiche_retry(scid, scid_len.getPointee(),
                 dcid, dcid_len.getPointee(),
@@ -348,11 +349,6 @@ public class QuicheConnection
         byteBuffer.get(odcid);
 
         return odcid;
-    }
-
-    private static void gen_cid(SecureRandom secureRandom, byte[] cid)
-    {
-        secureRandom.nextBytes(cid);
     }
 
     private static byte[] mintToken(byte[] dcid, int dcidLength, SocketAddress addr) {
@@ -550,5 +546,22 @@ public class QuicheConnection
             throw new IOException("Quiche failed to write to stream " + streamId + "; err=" + LibQuiche.quiche_error.errToString(written));
         buffer.position(buffer.position() + written);
         return written;
+    }
+
+    public int readFromStream(long streamId, ByteBuffer buffer) throws IOException
+    {
+        bool_pointer fin = new bool_pointer();
+        int written = INSTANCE.quiche_conn_stream_recv(quicheConn, new uint64_t(streamId), buffer, new size_t(buffer.remaining()), fin).intValue();
+        if (written == QUICHE_ERR_DONE)
+            return 0;
+        if (written < 0L)
+            throw new IOException("Quiche failed to read from stream " + streamId + "; err=" + LibQuiche.quiche_error.errToString(written));
+        buffer.position(buffer.position() + written);
+        return written;
+    }
+
+    public boolean isStreamFinished(long streamId)
+    {
+        return INSTANCE.quiche_conn_stream_finished(quicheConn, new uint64_t(streamId));
     }
 }
