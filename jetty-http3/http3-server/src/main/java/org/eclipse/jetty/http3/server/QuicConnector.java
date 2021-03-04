@@ -17,11 +17,10 @@ import java.io.File;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
-import java.nio.channels.DatagramChannel;
 import java.util.Arrays;
 
 import org.eclipse.jetty.http3.common.QuicConnection;
-import org.eclipse.jetty.http3.common.QuicConnectionManager;
+import org.eclipse.jetty.http3.common.QuicStreamEndPoint;
 import org.eclipse.jetty.http3.quiche.QuicheConfig;
 import org.eclipse.jetty.io.Connection;
 import org.eclipse.jetty.server.AbstractNetworkConnector;
@@ -109,9 +108,9 @@ public class QuicConnector extends AbstractNetworkConnector
         quicheConfig = null;
     }
 
-    public ServerQuicStreamEndPoint createQuicStreamEndPoint(QuicConnection quicConnection, long streamId)
+    public QuicStreamEndPoint createQuicStreamEndPoint(QuicConnection quicConnection, long streamId)
     {
-        ServerQuicStreamEndPoint endPoint = new ServerQuicStreamEndPoint(getScheduler(), quicConnection, streamId);
+        QuicStreamEndPoint endPoint = new QuicStreamEndPoint(getScheduler(), quicConnection, streamId);
         String negotiatedProtocol = quicConnection.getNegotiatedProtocol();
         ConnectionFactory connectionFactory = getConnectionFactory(negotiatedProtocol);
         if (connectionFactory == null)

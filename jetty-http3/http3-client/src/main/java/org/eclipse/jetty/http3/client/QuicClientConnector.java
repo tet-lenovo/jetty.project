@@ -20,6 +20,7 @@ import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.Executor;
 
+import org.eclipse.jetty.http3.common.QuicStreamEndPoint;
 import org.eclipse.jetty.http3.quiche.QuicheConfig;
 import org.eclipse.jetty.io.ByteBufferPool;
 import org.eclipse.jetty.io.ClientConnector;
@@ -185,7 +186,7 @@ public class QuicClientConnector extends ContainerLifeCycle implements IClientCo
             setByteBufferPool(new MappedByteBufferPool());
         super.doStart();
 
-        quicConnectionManager = new ClientQuicConnectionManager(this, executor, scheduler, byteBufferPool, (quicConnection, streamId) -> new ClientQuicStreamEndPoint(getScheduler(), quicConnection, streamId), quicheConfig);
+        quicConnectionManager = new ClientQuicConnectionManager(this, executor, scheduler, byteBufferPool, (quicConnection, streamId) -> new QuicStreamEndPoint(getScheduler(), quicConnection, streamId), quicheConfig);
         quicConnectionManager.start();
     }
 
