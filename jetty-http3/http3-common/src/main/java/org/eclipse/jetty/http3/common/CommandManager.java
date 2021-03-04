@@ -42,14 +42,14 @@ public class CommandManager
 
     public void channelWrite(ByteBuffer buffer, SocketAddress peer) throws IOException
     {
-        ChannelWriteCommand command = new ChannelWriteCommand(buffer, channel, peer);
+        ChannelWriteCommand command = new ChannelWriteCommand(buffer, peer);
 //        if (!command.execute())
         commands.offer(command);
     }
 
     public void quicSend(QuicConnection quicConnection) throws IOException
     {
-        QuicSendCommand command = new QuicSendCommand(channel, quicConnection);
+        QuicSendCommand command = new QuicSendCommand(quicConnection);
 //        if (!command.execute())
         commands.offer(command);
 
@@ -57,7 +57,7 @@ public class CommandManager
         // -> use a mark-as-closed mechanism and first send the data then close
         if (quicConnection.isMarkedClosed() && quicConnection.closeQuicConnection())
         {
-            command = new QuicSendCommand(channel, quicConnection);
+            command = new QuicSendCommand(quicConnection);
 //            if (!command.execute())
             commands.offer(command);
         }
@@ -65,7 +65,7 @@ public class CommandManager
 
     public void quicTimeout(QuicConnection quicConnection, boolean dispose) throws IOException
     {
-        QuicTimeoutCommand command = new QuicTimeoutCommand(quicConnection, channel, dispose);
+        QuicTimeoutCommand command = new QuicTimeoutCommand(quicConnection, dispose);
 //        if (!command.execute())
         commands.offer(command);
     }
@@ -112,10 +112,10 @@ public class CommandManager
         private final boolean dispose;
         private boolean timeoutCalled;
 
-        public QuicTimeoutCommand(QuicConnection quicConnection, DatagramChannel channel, boolean dispose)
+        public QuicTimeoutCommand(QuicConnection quicConnection, boolean dispose)
         {
             this.dispose = dispose;
-            this.quicSendCommand = new QuicSendCommand("timeout", channel, quicConnection);
+            this.quicSendCommand = new QuicSendCommand("timeout", quicConnection);
         }
 
         @Override
@@ -142,20 +142,18 @@ public class CommandManager
     private class QuicSendCommand extends Command
     {
         private final String cmdName;
-        private final DatagramChannel channel;
         private final QuicConnection quicConnection;
 
         private ByteBuffer buffer;
 
-        public QuicSendCommand(DatagramChannel channel, QuicConnection quicConnection)
+        public QuicSendCommand(QuicConnection quicConnection)
         {
-            this("send", channel, quicConnection);
+            this("send", quicConnection);
         }
 
-        private QuicSendCommand(String cmdName, DatagramChannel channel, QuicConnection quicConnection)
+        private QuicSendCommand(String cmdName, QuicConnection quicConnection)
         {
             this.cmdName = cmdName;
-            this.channel = channel;
             this.quicConnection = quicConnection;
         }
 
@@ -208,13 +206,11 @@ public class CommandManager
     private class ChannelWriteCommand extends Command
     {
         private final ByteBuffer buffer;
-        private final DatagramChannel channel;
         private final SocketAddress peer;
 
-        private ChannelWriteCommand(ByteBuffer buffer, DatagramChannel channel, SocketAddress peer)
+        private ChannelWriteCommand(ByteBuffer buffer, SocketAddress peer)
         {
             this.buffer = buffer;
-            this.channel = channel;
             this.peer = peer;
         }
 
