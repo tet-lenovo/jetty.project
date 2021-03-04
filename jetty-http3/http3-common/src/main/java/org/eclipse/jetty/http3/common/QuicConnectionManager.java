@@ -231,11 +231,7 @@ public abstract class QuicConnectionManager
             LOG.debug("got packet for an existing connection: " + connectionId + " - buffer: p=" + buffer.position() + " r=" + buffer.remaining());
             // existing connection
             quicConnection.quicRecv(buffer, peer);
-            // Bug? quiche apparently does not send the stream frames after the connection has been closed
-            // -> use a mark-as-closed mechanism and first send the data then close
             commandManager.quicSend(quicConnection);
-            if (quicConnection.isMarkedClosed() && quicConnection.closeQuicConnection())
-                commandManager.quicSend(quicConnection);
         }
         bufferPool.release(buffer);
     }
