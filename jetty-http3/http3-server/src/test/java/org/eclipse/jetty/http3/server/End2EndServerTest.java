@@ -31,7 +31,7 @@ import org.junit.jupiter.api.Test;
 public class End2EndServerTest
 {
     @Test
-    void name() throws Exception
+    public void name() throws Exception
     {
         Server server = new Server();
 

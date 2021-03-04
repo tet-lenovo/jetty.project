@@ -40,7 +40,7 @@ public class End2EndClientTest
     private Server server;
 
     @BeforeEach
-    void setUp() throws Exception
+    public void setUp() throws Exception
     {
         server = new Server();
 
@@ -70,13 +70,13 @@ public class End2EndClientTest
     }
 
     @AfterEach
-    void tearDown() throws Exception
+    public void tearDown() throws Exception
     {
         server.stop();
     }
 
     @Test
-    void name() throws Exception
+    public void name() throws Exception
     {
         HttpClientTransportOverQuic transport = new HttpClientTransportOverQuic();
         HttpClient client = new HttpClient(transport);
