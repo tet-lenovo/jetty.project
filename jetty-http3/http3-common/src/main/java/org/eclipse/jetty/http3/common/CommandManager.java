@@ -52,15 +52,6 @@ public class CommandManager
         QuicSendCommand command = new QuicSendCommand(quicConnection);
 //        if (!command.execute())
         commands.offer(command);
-
-        // Bug? quiche apparently does not send the stream frames after the connection has been closed
-        // -> use a mark-as-closed mechanism and first send the data then close
-        if (quicConnection.isMarkedClosed() && quicConnection.closeQuicConnection())
-        {
-            command = new QuicSendCommand(quicConnection);
-//            if (!command.execute())
-            commands.offer(command);
-        }
     }
 
     public void quicTimeout(QuicConnection quicConnection, boolean dispose) throws IOException
@@ -184,6 +175,15 @@ public class CommandManager
                 int quicSent = quicConnection.quicSend(buffer);
                 if (quicSent == 0)
                 {
+                    // Bug? quiche apparently does not send the stream frames after the connection has been closed
+                    // -> use a mark-as-closed mechanism and first send the data then close
+                    if (quicConnection.isMarkedClosed() && quicConnection.closeQuicConnection())
+                    {
+                        LOG.debug("{} command noticed the connection has been closed, notifying quiche", cmdName);
+                        buffer.clear();
+                        continue;
+                    }
+
                     LOG.debug("executed {} command; all done", cmdName);
                     bufferPool.release(buffer);
                     buffer = null;
