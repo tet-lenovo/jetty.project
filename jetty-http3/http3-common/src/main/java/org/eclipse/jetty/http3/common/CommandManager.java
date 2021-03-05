@@ -17,8 +17,8 @@ import java.io.IOException;
 import java.net.SocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.DatagramChannel;
-import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.concurrent.ConcurrentLinkedDeque;
 
 import org.eclipse.jetty.http3.quiche.ffi.LibQuiche;
 import org.eclipse.jetty.io.ByteBufferPool;
@@ -30,7 +30,7 @@ public class CommandManager
 {
     private static final Logger LOG = LoggerFactory.getLogger(CommandManager.class);
 
-    private final Deque<Command> commands = new ArrayDeque<>();
+    private final Deque<Command> commands = new ConcurrentLinkedDeque<>();
     private final ByteBufferPool bufferPool;
     private final DatagramChannel channel;
 
@@ -71,15 +71,13 @@ public class CommandManager
         LOG.debug("processing commands : {}", commands);
         while (!commands.isEmpty())
         {
-            Command command = commands.poll();
+            Command command = commands.peek();
             LOG.debug("executing command {}", command);
             boolean completed = command.execute();
             LOG.debug("executed command; completed? {}", completed);
             if (!completed)
-            {
-                commands.offerFirst(command);
                 return;
-            }
+            commands.poll();
         }
     }
 
