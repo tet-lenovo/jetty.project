@@ -28,7 +28,6 @@ import org.eclipse.jetty.http3.quiche.QuicheConnectionId;
 import org.eclipse.jetty.http3.quiche.ffi.LibQuiche;
 import org.eclipse.jetty.io.ByteBufferPool;
 import org.eclipse.jetty.util.BufferUtil;
-import org.eclipse.jetty.util.component.LifeCycle;
 import org.eclipse.jetty.util.thread.Scheduler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,9 +37,9 @@ public class ServerQuicConnectionManager extends QuicConnectionManager
     private static final Logger LOG = LoggerFactory.getLogger(ServerQuicConnectionManager.class);
     private final QuicStreamEndPoint.Factory endpointFactory;
 
-    public ServerQuicConnectionManager(LifeCycle lifeCycle, Executor executor, Scheduler scheduler, ByteBufferPool bufferPool, QuicheConfig quicheConfig, QuicStreamEndPoint.Factory endpointFactory) throws IOException
+    public ServerQuicConnectionManager(Executor executor, Scheduler scheduler, ByteBufferPool bufferPool, QuicheConfig quicheConfig, QuicStreamEndPoint.Factory endpointFactory) throws IOException
     {
-        super(lifeCycle, executor, scheduler, bufferPool, quicheConfig);
+        super(executor, scheduler, bufferPool, quicheConfig);
         this.endpointFactory = endpointFactory;
     }
 

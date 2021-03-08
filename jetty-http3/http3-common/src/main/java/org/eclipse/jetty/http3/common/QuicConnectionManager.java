@@ -34,16 +34,15 @@ import org.eclipse.jetty.http3.quiche.ffi.LibQuiche;
 import org.eclipse.jetty.io.ByteBufferPool;
 import org.eclipse.jetty.util.BufferUtil;
 import org.eclipse.jetty.util.IO;
-import org.eclipse.jetty.util.component.LifeCycle;
+import org.eclipse.jetty.util.component.ContainerLifeCycle;
 import org.eclipse.jetty.util.thread.Scheduler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public abstract class QuicConnectionManager
+public abstract class QuicConnectionManager extends ContainerLifeCycle
 {
     private static final Logger LOG = LoggerFactory.getLogger(QuicConnectionManager.class);
 
-    private final LifeCycle lifeCycle;
     private final Executor executor;
     private final Scheduler scheduler;
     private final ByteBufferPool bufferPool;
@@ -56,9 +55,8 @@ public abstract class QuicConnectionManager
     private QuicheConfig quicheConfig;
     private CountDownLatch selectorThreadLatch;
 
-    public QuicConnectionManager(LifeCycle lifeCycle, Executor executor, Scheduler scheduler, ByteBufferPool bufferPool, QuicheConfig quicheConfig) throws IOException
+    public QuicConnectionManager(Executor executor, Scheduler scheduler, ByteBufferPool bufferPool, QuicheConfig quicheConfig) throws IOException
     {
-        this.lifeCycle = lifeCycle;
         this.executor = executor;
         this.scheduler = scheduler;
         this.bufferPool = bufferPool;
@@ -91,15 +89,19 @@ public abstract class QuicConnectionManager
         return channel != null && channel.isOpen();
     }
 
-    public void start()
+    @Override
+    protected void doStart() throws Exception
     {
+        super.doStart();
         scheduler.schedule(this::fireTimeoutNotificationIfNeeded, 100, TimeUnit.MILLISECONDS);
         executor.execute(this::selectLoop);
         selectorThreadLatch = new CountDownLatch(1);
     }
 
-    public void close()
+    @Override
+    protected void doStop() throws Exception
     {
+        super.doStop();
         if (selector == null)
             return;
 
@@ -172,7 +174,7 @@ public abstract class QuicConnectionManager
         int selected = selector.select();
         if (Thread.interrupted())
             throw new InterruptedException("Selector thread was interrupted");
-        if (!lifeCycle.isRunning())
+        if (!isRunning())
             throw new InterruptedException("Container stopped");
 
         if (selected == 0)

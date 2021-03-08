@@ -93,7 +93,8 @@ public class QuicConnector extends AbstractNetworkConnector
         else
             quicheConfig.setApplicationProtos(protocols);
 
-        quicConnectionManager = new ServerQuicConnectionManager(this, getExecutor(), getScheduler(), getByteBufferPool(), quicheConfig, this::createQuicStreamEndPoint);
+        quicConnectionManager = new ServerQuicConnectionManager(getExecutor(), getScheduler(), getByteBufferPool(), quicheConfig, this::createQuicStreamEndPoint);
+        addBean(quicConnectionManager);
         quicConnectionManager.bind(bindAddress());
     }
 
@@ -103,7 +104,7 @@ public class QuicConnector extends AbstractNetworkConnector
         if (quicConnectionManager == null)
             return;
 
-        quicConnectionManager.close();
+        removeBean(quicConnectionManager);
         quicConnectionManager = null;
         quicheConfig = null;
     }

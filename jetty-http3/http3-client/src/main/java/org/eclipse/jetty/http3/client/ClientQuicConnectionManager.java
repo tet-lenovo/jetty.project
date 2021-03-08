@@ -45,9 +45,9 @@ public class ClientQuicConnectionManager extends QuicConnectionManager
     private final Map<SocketAddress, ConnectingHolder> pendingConnections = new ConcurrentHashMap<>();
     private final QuicStreamEndPoint.Factory endpointFactory;
 
-    public ClientQuicConnectionManager(LifeCycle lifeCycle, Executor executor, Scheduler scheduler, ByteBufferPool bufferPool, QuicheConfig quicheConfig, QuicStreamEndPoint.Factory endpointFactory) throws IOException
+    public ClientQuicConnectionManager(Executor executor, Scheduler scheduler, ByteBufferPool bufferPool, QuicheConfig quicheConfig, QuicStreamEndPoint.Factory endpointFactory) throws IOException
     {
-        super(lifeCycle, executor, scheduler, bufferPool, quicheConfig);
+        super(executor, scheduler, bufferPool, quicheConfig);
         this.endpointFactory = endpointFactory;
     }
 
