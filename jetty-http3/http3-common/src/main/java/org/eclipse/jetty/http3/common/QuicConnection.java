@@ -113,12 +113,17 @@ public class QuicConnection
 
     public QuicStreamEndPoint getOrCreateStreamEndPoint(long streamId)
     {
-        return streamEndpoints.compute(streamId, (sid, quicStreamEndPoint) ->
+        QuicStreamEndPoint endPoint = streamEndpoints.compute(streamId, (sid, quicStreamEndPoint) ->
         {
             if (quicStreamEndPoint == null)
+            {
                 quicStreamEndPoint = endpointFactory.createQuicStreamEndPoint(this, sid);
+                LOG.debug("creating endpoint for stream {}", sid);
+            }
             return quicStreamEndPoint;
         });
+        LOG.debug("returning endpoint for stream {}", streamId);
+        return endPoint;
     }
 
     public void onStreamClosed(long streamId)
@@ -158,7 +163,7 @@ public class QuicConnection
         return quicheConnection.isConnectionClosed();
     }
 
-    public boolean hasQuicConnectionTimedOut()
+    public boolean hasConnectionTimedOut()
     {
         return this.timeout.isReached();
     }

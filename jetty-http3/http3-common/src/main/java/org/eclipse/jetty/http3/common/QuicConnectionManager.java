@@ -129,7 +129,7 @@ public abstract class QuicConnectionManager extends ContainerLifeCycle
 
     private void fireTimeoutNotificationIfNeeded()
     {
-        boolean timedOut = connections.values().stream().map(QuicConnection::hasQuicConnectionTimedOut).findFirst().orElse(false);
+        boolean timedOut = connections.values().stream().map(QuicConnection::hasConnectionTimedOut).findFirst().orElse(false);
         if (timedOut)
         {
             LOG.debug("connection timed out, waking up selector");
@@ -213,7 +213,7 @@ public abstract class QuicConnectionManager extends ContainerLifeCycle
         while (it.hasNext())
         {
             QuicConnection quicConnection = it.next();
-            if (quicConnection.hasQuicConnectionTimedOut())
+            if (quicConnection.hasConnectionTimedOut())
             {
                 LOG.debug("connection has timed out: " + quicConnection);
                 boolean closed = quicConnection.isQuicConnectionClosed();
@@ -252,6 +252,7 @@ public abstract class QuicConnectionManager extends ContainerLifeCycle
         {
             LOG.debug("got packet for an existing connection: " + connectionId + " - buffer: p=" + buffer.position() + " r=" + buffer.remaining());
             Collection<QuicStreamEndPoint> endPoints = quicConnection.quicRecv(buffer, peer);
+            LOG.debug("{} endpoint(s) are now fillable: {}", endPoints.size(), endPoints);
             for (QuicStreamEndPoint endPoint : endPoints)
             {
                 endPoint.onFillable();
