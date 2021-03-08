@@ -20,6 +20,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.eclipse.jetty.io.AbstractEndPoint;
 import org.eclipse.jetty.io.EofException;
+import org.eclipse.jetty.io.FillInterest;
 import org.eclipse.jetty.util.BufferUtil;
 import org.eclipse.jetty.util.thread.Scheduler;
 import org.slf4j.Logger;
@@ -53,17 +54,17 @@ public class QuicStreamEndPoint extends AbstractEndPoint
         return quicConnection.getRemoteAddress();
     }
 
-    public void onFillable()
+    public FillInterest onFillable()
     {
         if (fillInterested.compareAndSet(true, false))
         {
-            LOG.debug("Fillable start");
-            getFillInterest().fillable();
-            LOG.debug("Fillable end");
+            LOG.debug("onFillable interested stream {}", streamId);
+            return getFillInterest();
         }
         else
         {
-            LOG.debug("fillable but not interested endpoint of stream {}", streamId);
+            LOG.debug("onFillable uninterested stream {}", streamId);
+            return null;
         }
     }
 

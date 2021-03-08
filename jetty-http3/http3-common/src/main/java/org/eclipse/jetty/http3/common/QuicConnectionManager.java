@@ -23,7 +23,9 @@ import java.nio.channels.Selector;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
@@ -32,10 +34,13 @@ import org.eclipse.jetty.http3.quiche.QuicheConfig;
 import org.eclipse.jetty.http3.quiche.QuicheConnectionId;
 import org.eclipse.jetty.http3.quiche.ffi.LibQuiche;
 import org.eclipse.jetty.io.ByteBufferPool;
+import org.eclipse.jetty.io.FillInterest;
 import org.eclipse.jetty.util.BufferUtil;
 import org.eclipse.jetty.util.IO;
 import org.eclipse.jetty.util.component.ContainerLifeCycle;
+import org.eclipse.jetty.util.thread.Invocable;
 import org.eclipse.jetty.util.thread.Scheduler;
+import org.eclipse.jetty.util.thread.strategy.EatWhatYouKill;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -54,6 +59,8 @@ public abstract class QuicConnectionManager extends ContainerLifeCycle
     private SelectionKey selectionKey;
     private QuicheConfig quicheConfig;
     private CountDownLatch selectorThreadLatch;
+    private EatWhatYouKill executionStrategy;
+    private Queue<Runnable> tasks;
 
     public QuicConnectionManager(Executor executor, Scheduler scheduler, ByteBufferPool bufferPool, QuicheConfig quicheConfig) throws IOException
     {
@@ -96,6 +103,31 @@ public abstract class QuicConnectionManager extends ContainerLifeCycle
         scheduler.schedule(this::fireTimeoutNotificationIfNeeded, 100, TimeUnit.MILLISECONDS);
         executor.execute(this::selectLoop);
         selectorThreadLatch = new CountDownLatch(1);
+        tasks = new ConcurrentLinkedQueue<>();
+        executionStrategy = new EatWhatYouKill(tasks::poll, executor);
+        executionStrategy.start();
+    }
+
+    private static class FillInterestInvocable implements Invocable, Runnable
+    {
+        private final FillInterest fillInterest;
+
+        public FillInterestInvocable(FillInterest fillInterest)
+        {
+            this.fillInterest = fillInterest;
+        }
+
+        @Override
+        public InvocationType getInvocationType()
+        {
+            return fillInterest.getCallbackInvocationType();
+        }
+
+        @Override
+        public void run()
+        {
+            fillInterest.fillable();
+        }
     }
 
     @Override
@@ -125,6 +157,9 @@ public abstract class QuicConnectionManager extends ContainerLifeCycle
         connections.clear();
         quicheConfig = null;
         commandManager = null;
+
+        tasks.clear();
+        executionStrategy.stop();
     }
 
     private void fireTimeoutNotificationIfNeeded()
@@ -253,11 +288,19 @@ public abstract class QuicConnectionManager extends ContainerLifeCycle
             LOG.debug("got packet for an existing connection: " + connectionId + " - buffer: p=" + buffer.position() + " r=" + buffer.remaining());
             Collection<QuicStreamEndPoint> endPoints = quicConnection.quicRecv(buffer, peer);
             LOG.debug("{} endpoint(s) are now fillable: {}", endPoints.size(), endPoints);
-            for (QuicStreamEndPoint endPoint : endPoints)
-            {
-                endPoint.onFillable();
-            }
-            commandManager.quicSend(quicConnection);
+
+            if (endPoints.isEmpty())
+                commandManager.quicSend(quicConnection);
+            else
+                for (QuicStreamEndPoint endPoint : endPoints)
+                {
+                    FillInterest fillInterest = endPoint.onFillable();
+                    if (fillInterest != null)
+                    {
+                        tasks.offer(new FillInterestInvocable(fillInterest));
+                        executionStrategy.dispatch();
+                    }
+                }
         }
         bufferPool.release(buffer);
     }
