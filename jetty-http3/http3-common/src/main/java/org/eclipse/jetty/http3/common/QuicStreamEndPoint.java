@@ -61,6 +61,10 @@ public class QuicStreamEndPoint extends AbstractEndPoint
             getFillInterest().fillable();
             LOG.debug("Fillable end");
         }
+        else
+        {
+            LOG.debug("fillable but not interested endpoint of stream {}", streamId);
+        }
     }
 
     @Override
