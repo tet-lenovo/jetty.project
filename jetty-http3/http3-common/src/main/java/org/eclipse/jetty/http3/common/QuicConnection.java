@@ -38,8 +38,7 @@ public class QuicConnection
     private final Map<Long, QuicStreamEndPoint> streamEndpoints = new ConcurrentHashMap<>();
     private final InetSocketAddress localAddress;
     private volatile InetSocketAddress remoteAddress;
-    private volatile long sendTimestampInNs;
-    private volatile long sendTimeoutInNs;
+    private volatile Timeout timeout;
     private volatile boolean markedClosed;
 
     public QuicConnection(QuicheConnection quicheConnection, InetSocketAddress localAddress, InetSocketAddress remoteAddress, QuicStreamEndPoint.Factory endpointFactory)
@@ -69,8 +68,7 @@ public class QuicConnection
     {
         int quicSent = quicheConnection.send(buffer);
         long timeoutInMs = quicheConnection.nextTimeout();
-        sendTimestampInNs = System.nanoTime();
-        sendTimeoutInNs = TimeUnit.MILLISECONDS.toNanos(timeoutInMs);
+        timeout = new Timeout(TimeUnit.MILLISECONDS.toNanos(timeoutInMs));
         LOG.debug("next timeout is in {}ms", timeoutInMs);
         return quicSent;
     }
@@ -162,7 +160,7 @@ public class QuicConnection
 
     public boolean hasQuicConnectionTimedOut()
     {
-        return System.nanoTime() - sendTimestampInNs >= sendTimeoutInNs;
+        return this.timeout.isReached();
     }
 
     public int writeToStream(long streamId, ByteBuffer buffer) throws IOException
@@ -178,5 +176,22 @@ public class QuicConnection
     public boolean isFinished(long streamId)
     {
         return quicheConnection.isStreamFinished(streamId);
+    }
+
+    private static class Timeout
+    {
+        private final long timestampInNs;
+        private final long timeoutInNs;
+
+        private Timeout(long timeoutInNs)
+        {
+            this.timestampInNs = System.nanoTime();
+            this.timeoutInNs = timeoutInNs;
+        }
+
+        public boolean isReached()
+        {
+            return System.nanoTime() - timestampInNs >= timeoutInNs;
+        }
     }
 }
