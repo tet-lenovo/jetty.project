@@ -24,6 +24,7 @@ import java.util.Collection;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 
@@ -53,6 +54,7 @@ public abstract class QuicConnectionManager
     private DatagramChannel channel;
     private SelectionKey selectionKey;
     private QuicheConfig quicheConfig;
+    private CountDownLatch selectorThreadLatch;
 
     public QuicConnectionManager(LifeCycle lifeCycle, Executor executor, Scheduler scheduler, ByteBufferPool bufferPool, QuicheConfig quicheConfig) throws IOException
     {
@@ -93,6 +95,7 @@ public abstract class QuicConnectionManager
     {
         scheduler.schedule(this::fireTimeoutNotificationIfNeeded, 100, TimeUnit.MILLISECONDS);
         executor.execute(this::selectLoop);
+        selectorThreadLatch = new CountDownLatch(1);
     }
 
     public void close()
@@ -100,14 +103,24 @@ public abstract class QuicConnectionManager
         if (selector == null)
             return;
 
-        connections.values().forEach(QuicConnection::dispose);
-        connections.clear();
         selectionKey.cancel();
+        selector.wakeup();
+        try
+        {
+            selectorThreadLatch.await();
+        }
+        catch (InterruptedException e)
+        {
+            LOG.debug("interrupted while waiting for selector thread", e);
+        }
+
         selectionKey = null;
         IO.close(channel);
         channel = null;
         IO.close(selector);
         selector = null;
+        connections.values().forEach(QuicConnection::dispose);
+        connections.clear();
         quicheConfig = null;
         commandManager = null;
     }
@@ -125,25 +138,33 @@ public abstract class QuicConnectionManager
 
     private void selectLoop()
     {
-        String oldName = Thread.currentThread().getName();
-        Thread.currentThread().setName("jetty-" + getClass().getSimpleName());
-        while (true)
+        Thread selectorThread = Thread.currentThread();
+        String oldName = selectorThread.getName();
+        selectorThread.setName("jetty-" + getClass().getSimpleName());
+        try
         {
-            try
+            while (true)
             {
-                select();
-            }
-            catch (IOException e)
-            {
-                LOG.error("error during selection", e);
-            }
-            catch (InterruptedException e)
-            {
-                LOG.debug("interruption during selection", e);
-                break;
+                try
+                {
+                    select();
+                }
+                catch (IOException e)
+                {
+                    LOG.error("error during selection", e);
+                }
+                catch (InterruptedException e)
+                {
+                    LOG.debug("interruption during selection", e);
+                    break;
+                }
             }
         }
-        Thread.currentThread().setName(oldName);
+        finally
+        {
+            selectorThreadLatch.countDown();
+            selectorThread.setName(oldName);
+        }
     }
 
     private void select() throws IOException, InterruptedException
