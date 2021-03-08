@@ -53,7 +53,7 @@ public abstract class QuicConnectionManager extends ContainerLifeCycle
     private final ByteBufferPool bufferPool;
 
     private final Map<QuicheConnectionId, QuicConnection> connections = new ConcurrentHashMap<>();
-    private CommandManager commandManager;
+    protected CommandManager commandManager;
     private Selector selector;
     private DatagramChannel channel;
     private SelectionKey selectionKey;
@@ -286,7 +286,19 @@ public abstract class QuicConnectionManager extends ContainerLifeCycle
         else
         {
             LOG.debug("got packet for an existing connection: " + connectionId + " - buffer: p=" + buffer.position() + " r=" + buffer.remaining());
-            Collection<QuicStreamEndPoint> endPoints = quicConnection.quicRecv(buffer, peer);
+            Collection<QuicStreamEndPoint> endPoints = quicConnection.quicRecv(buffer, peer, qc ->
+            {
+                try
+                {
+                    LOG.debug("flushing {}", qc);
+                    commandManager.quicSend(qc);
+                    wakeupSelectorIfNeeded();
+                }
+                catch (IOException e)
+                {
+                    throw new RuntimeException(e);
+                }
+            });
             LOG.debug("{} endpoint(s) are now fillable: {}", endPoints.size(), endPoints);
 
             if (endPoints.isEmpty())

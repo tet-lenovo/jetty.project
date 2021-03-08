@@ -78,7 +78,7 @@ public class QuicConnection
      * @param peer address of the peer who sent the packet
      * @return a collection of QuicStreamEndPoints that need to be notified they have data to read
      */
-    public Collection<QuicStreamEndPoint> quicRecv(ByteBuffer buffer, InetSocketAddress peer) throws IOException
+    public Collection<QuicStreamEndPoint> quicRecv(ByteBuffer buffer, InetSocketAddress peer, QuicStreamEndPoint.Flusher flusher) throws IOException
     {
         LOG.debug("handling packet " + BufferUtil.toDetailString(buffer));
         remoteAddress = peer;
@@ -99,7 +99,7 @@ public class QuicConnection
                 long streamId = stream.getStreamId();
                 LOG.debug("stream {} is readable", streamId);
 
-                QuicStreamEndPoint streamEndPoint = getOrCreateStreamEndPoint(streamId);
+                QuicStreamEndPoint streamEndPoint = getOrCreateStreamEndPoint(streamId, flusher);
                 result.add(streamEndPoint);
             }
         }
@@ -111,13 +111,13 @@ public class QuicConnection
         return quicheConnection.getNegotiatedProtocol();
     }
 
-    public QuicStreamEndPoint getOrCreateStreamEndPoint(long streamId)
+    public QuicStreamEndPoint getOrCreateStreamEndPoint(long streamId, QuicStreamEndPoint.Flusher flusher)
     {
         QuicStreamEndPoint endPoint = streamEndpoints.compute(streamId, (sid, quicStreamEndPoint) ->
         {
             if (quicStreamEndPoint == null)
             {
-                quicStreamEndPoint = endpointFactory.createQuicStreamEndPoint(this, sid);
+                quicStreamEndPoint = endpointFactory.createQuicStreamEndPoint(this, sid, flusher);
                 LOG.debug("creating endpoint for stream {}", sid);
             }
             return quicStreamEndPoint;

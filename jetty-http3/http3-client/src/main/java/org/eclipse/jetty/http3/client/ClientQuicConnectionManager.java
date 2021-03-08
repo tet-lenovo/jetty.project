@@ -33,7 +33,6 @@ import org.eclipse.jetty.io.ClientConnector;
 import org.eclipse.jetty.io.Connection;
 import org.eclipse.jetty.util.BufferUtil;
 import org.eclipse.jetty.util.Promise;
-import org.eclipse.jetty.util.component.LifeCycle;
 import org.eclipse.jetty.util.thread.Scheduler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -72,7 +71,19 @@ public class ClientQuicConnectionManager extends QuicConnectionManager
             pendingConnections.remove(peer);
             quicConnection = new QuicConnection(quicheConnection, getLocalAddress(), peer, endpointFactory);
 
-            QuicStreamEndPoint quicStreamEndPoint = quicConnection.getOrCreateStreamEndPoint(4); // TODO generate a proper stream ID
+            QuicStreamEndPoint quicStreamEndPoint = quicConnection.getOrCreateStreamEndPoint(4, qc ->
+            {
+                try
+                {
+                    LOG.debug("flushing {}", qc);
+                    commandManager.quicSend(qc);
+                    wakeupSelectorIfNeeded();
+                }
+                catch (IOException e)
+                {
+                    throw new RuntimeException(e);
+                }
+            }); // TODO generate a proper stream ID
             Connection connection = connectingHolder.httpClientTransportOverQuic.newConnection(quicStreamEndPoint, connectingHolder.context);
             // TODO configure the connection, see other transports
             quicStreamEndPoint.setConnection(connection);

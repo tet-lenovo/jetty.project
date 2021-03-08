@@ -109,9 +109,9 @@ public class QuicConnector extends AbstractNetworkConnector
         quicheConfig = null;
     }
 
-    public QuicStreamEndPoint createQuicStreamEndPoint(QuicConnection quicConnection, long streamId)
+    public QuicStreamEndPoint createQuicStreamEndPoint(QuicConnection quicConnection, long streamId, QuicStreamEndPoint.Flusher flusher)
     {
-        QuicStreamEndPoint endPoint = new QuicStreamEndPoint(getScheduler(), quicConnection, streamId);
+        QuicStreamEndPoint endPoint = new QuicStreamEndPoint(getScheduler(), quicConnection, streamId, flusher);
         String negotiatedProtocol = quicConnection.getNegotiatedProtocol();
         ConnectionFactory connectionFactory = getConnectionFactory(negotiatedProtocol);
         if (connectionFactory == null)
