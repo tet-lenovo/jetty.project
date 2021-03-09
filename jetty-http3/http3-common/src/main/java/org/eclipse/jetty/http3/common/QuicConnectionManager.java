@@ -51,7 +51,7 @@ public abstract class QuicConnectionManager extends ContainerLifeCycle
     private final ByteBufferPool bufferPool;
 
     private final Map<QuicheConnectionId, QuicConnection> connections = new ConcurrentHashMap<>();
-    protected CommandManager commandManager;
+    private CommandManager commandManager;
     private Selector selector;
     private DatagramChannel channel;
     private SelectionKey selectionKey;
@@ -314,6 +314,11 @@ public abstract class QuicConnectionManager extends ContainerLifeCycle
     protected void channelWrite(ByteBuffer buffer, SocketAddress peer) throws IOException
     {
         commandManager.channelWrite(buffer, peer);
+    }
+
+    protected void quicSend(QuicConnection quicConnection) throws IOException
+    {
+        commandManager.quicSend(quicConnection);
     }
 
     protected void wakeupSelectorIfNeeded()

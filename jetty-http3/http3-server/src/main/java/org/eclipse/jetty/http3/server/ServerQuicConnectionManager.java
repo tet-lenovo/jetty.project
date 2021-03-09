@@ -83,7 +83,7 @@ public class ServerQuicConnectionManager extends QuicConnectionManager
                 try
                 {
                     LOG.debug("flushing {}", qc);
-                    commandManager.quicSend(qc);
+                    quicSend(qc);
                     wakeupSelectorIfNeeded();
                     LOG.debug("flushed {}", qc);
                 }
