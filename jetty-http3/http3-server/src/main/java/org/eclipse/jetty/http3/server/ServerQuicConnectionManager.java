@@ -85,6 +85,7 @@ public class ServerQuicConnectionManager extends QuicConnectionManager
                     LOG.debug("flushing {}", qc);
                     commandManager.quicSend(qc);
                     wakeupSelectorIfNeeded();
+                    LOG.debug("flushed {}", qc);
                 }
                 catch (IOException e)
                 {

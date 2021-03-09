@@ -20,8 +20,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.eclipse.jetty.io.AbstractEndPoint;
 import org.eclipse.jetty.io.EofException;
-import org.eclipse.jetty.io.FillInterest;
 import org.eclipse.jetty.util.BufferUtil;
+import org.eclipse.jetty.util.thread.Invocable;
 import org.eclipse.jetty.util.thread.Scheduler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -54,17 +54,101 @@ public class QuicStreamEndPoint extends AbstractEndPoint
         return quicConnection.getRemoteAddress();
     }
 
-    public FillInterest onFillable()
+    public Task onSelected(boolean fillable, boolean flushable)
     {
-        if (fillInterested.compareAndSet(true, false))
+        LOG.debug("onSelected fillable {} flushable {}", fillable, flushable);
+        if (fillable)
+            fillable = fillInterested.compareAndSet(true, false);
+
+        LOG.debug("onSelected after fillInterested check fillable {}", fillable);
+
+        // return task to complete the job
+        Task task = fillable
+            ? (flushable
+            ? _runCompleteWriteFillable
+            : _runFillable)
+            : (flushable
+            ? _runCompleteWrite
+            : null);
+
+        if (LOG.isDebugEnabled())
+            LOG.debug("onSelected task {}", task);
+        return task;
+    }
+
+    private final Task _runCompleteWriteFillable = new Task("runCompleteWriteFillable")
+    {
+        @Override
+        public InvocationType getInvocationType()
         {
-            LOG.debug("onFillable interested stream {}", streamId);
-            return getFillInterest();
+            InvocationType fillT = getFillInterest().getCallbackInvocationType();
+            InvocationType flushT = getWriteFlusher().getCallbackInvocationType();
+            if (fillT == flushT)
+                return fillT;
+
+            if (fillT == InvocationType.EITHER && flushT == InvocationType.NON_BLOCKING)
+                return InvocationType.EITHER;
+
+            if (fillT == InvocationType.NON_BLOCKING && flushT == InvocationType.EITHER)
+                return InvocationType.EITHER;
+
+            return InvocationType.BLOCKING;
         }
-        else
+
+        @Override
+        public void run()
         {
-            LOG.debug("onFillable uninterested stream {}", streamId);
-            return null;
+            getWriteFlusher().completeWrite();
+            getFillInterest().fillable();
+        }
+    };
+
+    private final Task _runFillable = new Task("runFillable")
+    {
+        @Override
+        public InvocationType getInvocationType()
+        {
+            return getFillInterest().getCallbackInvocationType();
+        }
+
+        @Override
+        public void run()
+        {
+            getFillInterest().fillable();
+        }
+    };
+
+    private final Task _runCompleteWrite = new Task("runCompleteWrite")
+    {
+        @Override
+        public InvocationType getInvocationType()
+        {
+            return getWriteFlusher().getCallbackInvocationType();
+        }
+
+        @Override
+        public void run()
+        {
+            getWriteFlusher().completeWrite();
+        }
+    };
+
+    public abstract static class Task implements Invocable, Runnable
+    {
+        private final String op;
+
+        public Task(String op)
+        {
+            this.op = op;
+        }
+
+        @Override
+        public abstract InvocationType getInvocationType();
+
+        @Override
+        public String toString()
+        {
+            return op;
         }
     }
 

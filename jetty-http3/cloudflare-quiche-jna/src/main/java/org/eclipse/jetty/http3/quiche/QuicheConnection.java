@@ -165,7 +165,6 @@ public class QuicheConnection
         byte[] token = new byte[32];
         size_t_pointer token_len = new size_t_pointer(token.length);
 
-        LOGGER.debug("getting header info...");
         int rc = INSTANCE.quiche_header_info(packet, new size_t(packet.remaining()), new size_t(QUICHE_MAX_CONN_ID_LEN),
             version, type,
             scid, scid_len,
@@ -368,60 +367,32 @@ public class QuicheConnection
         return token.array();
     }
 
-    public Iterator<QuicheStream> readableStreamsIterator()
+    public synchronized List<Long> readableStreamIds()
     {
-        return new StreamIterator(quicheConn, false);
+        return iterableStreamIds(false);
     }
 
-    public Iterator<QuicheStream> writableStreamsIterator()
+    public synchronized List<Long> writableStreamIds()
     {
-        return new StreamIterator(quicheConn, true);
+        return iterableStreamIds(true);
     }
 
-    static class StreamIterator implements Iterator<QuicheStream>
+    private List<Long> iterableStreamIds(boolean write)
     {
-        private static final Logger LOGGER = LoggerFactory.getLogger(StreamIterator.class);
+        LibQuiche.quiche_stream_iter quiche_stream_iter;
+        if (write)
+            quiche_stream_iter = INSTANCE.quiche_conn_writable(quicheConn);
+        else
+            quiche_stream_iter = INSTANCE.quiche_conn_readable(quicheConn);
 
-        private final LibQuiche.quiche_conn quicheConn;
-        private final Iterator<Long> streamIdIterator;
-
-        public StreamIterator(LibQuiche.quiche_conn quicheConn, boolean write)
+        List<Long> result = new ArrayList<>();
+        uint64_t_pointer streamId = new uint64_t_pointer();
+        while (INSTANCE.quiche_stream_iter_next(quiche_stream_iter, streamId))
         {
-            this.quicheConn = quicheConn;
-            this.streamIdIterator = iterableStreamIds(write).iterator();
-            LOGGER.debug("Created {} stream iterator", (write ? "write" : "read"));
+            result.add(streamId.getValue());
         }
-
-        private List<Long> iterableStreamIds(boolean write)
-        {
-            LibQuiche.quiche_stream_iter quiche_stream_iter;
-            if (write)
-                quiche_stream_iter = INSTANCE.quiche_conn_writable(quicheConn);
-            else
-                quiche_stream_iter = INSTANCE.quiche_conn_readable(quicheConn);
-
-            List<Long> result = new ArrayList<>();
-            uint64_t_pointer streamId = new uint64_t_pointer();
-            while (INSTANCE.quiche_stream_iter_next(quiche_stream_iter, streamId))
-            {
-                result.add(streamId.getValue());
-            }
-            INSTANCE.quiche_stream_iter_free(quiche_stream_iter);
-            return result;
-        }
-
-        @Override
-        public boolean hasNext()
-        {
-            return streamIdIterator.hasNext();
-        }
-
-        @Override
-        public QuicheStream next()
-        {
-            Long streamId = streamIdIterator.next();
-            return new QuicheStream(quicheConn, streamId);
-        }
+        INSTANCE.quiche_stream_iter_free(quiche_stream_iter);
+        return result;
     }
 
     /**
@@ -430,7 +401,7 @@ public class QuicheConnection
      * @return how many bytes were consumed.
      * @throws IOException
      */
-    public int recv(ByteBuffer buffer) throws IOException
+    public synchronized int recv(ByteBuffer buffer) throws IOException
     {
         if (quicheConn == null)
             throw new IOException("Cannot receive when not connected");
@@ -448,7 +419,7 @@ public class QuicheConnection
      * @return how many bytes were added to the buffer.
      * @throws IOException
      */
-    public int send(ByteBuffer buffer) throws IOException
+    public synchronized int send(ByteBuffer buffer) throws IOException
     {
         if (quicheConn == null)
             throw new IOException("Cannot send when not connected");
@@ -462,32 +433,32 @@ public class QuicheConnection
         return written;
     }
 
-    public boolean isConnectionClosed()
+    public synchronized boolean isConnectionClosed()
     {
         return INSTANCE.quiche_conn_is_closed(quicheConn);
     }
 
-    public boolean isConnectionEstablished()
+    public synchronized boolean isConnectionEstablished()
     {
         return INSTANCE.quiche_conn_is_established(quicheConn);
     }
 
-    public boolean isConnectionInEarlyData()
+    public synchronized boolean isConnectionInEarlyData()
     {
         return INSTANCE.quiche_conn_is_in_early_data(quicheConn);
     }
 
-    public long nextTimeout()
+    public synchronized long nextTimeout()
     {
         return INSTANCE.quiche_conn_timeout_as_millis(quicheConn).longValue();
     }
 
-    public void onTimeout()
+    public synchronized void onTimeout()
     {
         INSTANCE.quiche_conn_on_timeout(quicheConn);
     }
 
-    public String getNegotiatedProtocol()
+    public synchronized String getNegotiatedProtocol()
     {
         PointerByReference out = new PointerByReference();
         size_t_pointer outLen = new size_t_pointer();
@@ -495,7 +466,7 @@ public class QuicheConnection
         return new String(out.getValue().getByteArray(0, (int)outLen.getValue()), StandardCharsets.UTF_8);
     }
 
-    public String statistics()
+    public synchronized String statistics()
     {
         LibQuiche.quiche_stats stats = new LibQuiche.quiche_stats();
         INSTANCE.quiche_conn_stats(quicheConn, stats);
@@ -508,7 +479,7 @@ public class QuicheConnection
             "]";
     }
 
-    public void dispose()
+    public synchronized void dispose()
     {
         if (quicheConn != null)
         {
@@ -522,12 +493,12 @@ public class QuicheConnection
         }
     }
 
-    public boolean isDraining()
+    public synchronized boolean isDraining()
     {
         return INSTANCE.quiche_conn_is_draining(quicheConn);
     }
 
-    public boolean close() throws IOException
+    public synchronized boolean close() throws IOException
     {
         int rc = INSTANCE.quiche_conn_close(quicheConn, true, new uint64_t(0), null, new size_t(0));
         if (rc == 0)
@@ -537,8 +508,11 @@ public class QuicheConnection
         throw new IOException("failed to close connection: " + LibQuiche.quiche_error.errToString(rc));
     }
 
-    public int writeToStream(long streamId, ByteBuffer buffer) throws IOException
+    public synchronized int writeToStream(long streamId, ByteBuffer buffer) throws IOException
     {
+        if (buffer == null || buffer.remaining() == 0)
+            throw new IllegalArgumentException("invalid buffer : " + buffer);
+
         int written = INSTANCE.quiche_conn_stream_send(quicheConn, new uint64_t(streamId), buffer, new size_t(buffer.remaining()), false).intValue();
         if (written == QUICHE_ERR_DONE)
             return 0;
@@ -548,7 +522,7 @@ public class QuicheConnection
         return written;
     }
 
-    public int readFromStream(long streamId, ByteBuffer buffer) throws IOException
+    public synchronized int readFromStream(long streamId, ByteBuffer buffer) throws IOException
     {
         bool_pointer fin = new bool_pointer();
         int written = INSTANCE.quiche_conn_stream_recv(quicheConn, new uint64_t(streamId), buffer, new size_t(buffer.remaining()), fin).intValue();
@@ -560,7 +534,7 @@ public class QuicheConnection
         return written;
     }
 
-    public boolean isStreamFinished(long streamId)
+    public synchronized boolean isStreamFinished(long streamId)
     {
         return INSTANCE.quiche_conn_stream_finished(quicheConn, new uint64_t(streamId));
     }

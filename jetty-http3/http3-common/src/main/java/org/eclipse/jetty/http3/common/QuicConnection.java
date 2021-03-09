@@ -16,15 +16,13 @@ package org.eclipse.jetty.http3.common;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 
 import org.eclipse.jetty.http3.quiche.QuicheConnection;
-import org.eclipse.jetty.http3.quiche.QuicheStream;
 import org.eclipse.jetty.util.BufferUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -78,9 +76,8 @@ public class QuicConnection
     /**
      * @param buffer cipher text
      * @param peer address of the peer who sent the packet
-     * @return a collection of QuicStreamEndPoints that need to be notified they have data to read
      */
-    public Collection<QuicStreamEndPoint> feedEncrypted(ByteBuffer buffer, InetSocketAddress peer) throws IOException
+    public void feedEncrypted(ByteBuffer buffer, InetSocketAddress peer) throws IOException
     {
         LOG.debug("handling packet " + BufferUtil.toDetailString(buffer));
         remoteAddress = peer;
@@ -90,22 +87,35 @@ public class QuicConnection
         boolean establishedAfter = quicheConnection.isConnectionEstablished();
         if (!establishedBefore && establishedAfter)
             LOG.debug("newly established connection, negotiated ALPN protocol: '{}'", quicheConnection.getNegotiatedProtocol());
+    }
 
-        Collection<QuicStreamEndPoint> result = new ArrayList<>();
-        if (establishedAfter)
+    public void processStreams(Consumer<Runnable> taskProcessor)
+    {
+        if (quicheConnection.isConnectionEstablished())
         {
-            Iterator<QuicheStream> it = quicheConnection.readableStreamsIterator();
-            while (it.hasNext())
-            {
-                QuicheStream stream = it.next();
-                long streamId = stream.getStreamId();
-                LOG.debug("stream {} is readable", streamId);
+            List<Long> readableStreamIds = quicheConnection.readableStreamIds();
+            LOG.debug("readable stream ids: {}", readableStreamIds);
+            List<Long> writableStreamIds = quicheConnection.writableStreamIds();
+            LOG.debug("writable stream ids: {}", writableStreamIds);
 
-                QuicStreamEndPoint streamEndPoint = getOrCreateStreamEndPoint(streamId);
-                result.add(streamEndPoint);
+            for (Long readableStreamId : readableStreamIds)
+            {
+                boolean writable = writableStreamIds.remove(readableStreamId);
+                QuicStreamEndPoint streamEndPoint = getOrCreateStreamEndPoint(readableStreamId);
+                LOG.debug("selected endpoint for read (combined write? {}) : {}", writable, streamEndPoint);
+                QuicStreamEndPoint.Task task = streamEndPoint.onSelected(true, writable);
+                if (task != null)
+                    taskProcessor.accept(task);
+            }
+            for (Long writableStreamId : writableStreamIds)
+            {
+                QuicStreamEndPoint streamEndPoint = getOrCreateStreamEndPoint(writableStreamId);
+                LOG.debug("selected endpoint for write : {}", streamEndPoint);
+                QuicStreamEndPoint.Task task = streamEndPoint.onSelected(false, true);
+                if (task != null)
+                    taskProcessor.accept(task);
             }
         }
-        return result;
     }
 
     public String getNegotiatedProtocol()

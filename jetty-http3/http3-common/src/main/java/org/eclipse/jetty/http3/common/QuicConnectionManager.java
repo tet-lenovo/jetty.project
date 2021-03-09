@@ -20,7 +20,6 @@ import java.nio.ByteBuffer;
 import java.nio.channels.DatagramChannel;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
-import java.util.Collection;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Queue;
@@ -31,14 +30,13 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 
 import org.eclipse.jetty.http3.quiche.QuicheConfig;
+import org.eclipse.jetty.http3.quiche.QuicheConnection;
 import org.eclipse.jetty.http3.quiche.QuicheConnectionId;
 import org.eclipse.jetty.http3.quiche.ffi.LibQuiche;
 import org.eclipse.jetty.io.ByteBufferPool;
-import org.eclipse.jetty.io.FillInterest;
 import org.eclipse.jetty.util.BufferUtil;
 import org.eclipse.jetty.util.IO;
 import org.eclipse.jetty.util.component.ContainerLifeCycle;
-import org.eclipse.jetty.util.thread.Invocable;
 import org.eclipse.jetty.util.thread.Scheduler;
 import org.eclipse.jetty.util.thread.strategy.EatWhatYouKill;
 import org.slf4j.Logger;
@@ -106,28 +104,6 @@ public abstract class QuicConnectionManager extends ContainerLifeCycle
         tasks = new ConcurrentLinkedQueue<>();
         executionStrategy = new EatWhatYouKill(tasks::poll, executor);
         executionStrategy.start();
-    }
-
-    private static class FillInterestInvocable implements Invocable, Runnable
-    {
-        private final FillInterest fillInterest;
-
-        public FillInterestInvocable(FillInterest fillInterest)
-        {
-            this.fillInterest = fillInterest;
-        }
-
-        @Override
-        public InvocationType getInvocationType()
-        {
-            return fillInterest.getCallbackInvocationType();
-        }
-
-        @Override
-        public void run()
-        {
-            fillInterest.fillable();
-        }
     }
 
     @Override
@@ -285,22 +261,15 @@ public abstract class QuicConnectionManager extends ContainerLifeCycle
         }
         else
         {
-            LOG.debug("got packet for an existing connection: " + connectionId + " - buffer: p=" + buffer.position() + " r=" + buffer.remaining());
-            Collection<QuicStreamEndPoint> readableEndPoints = quicConnection.feedEncrypted(buffer, peer);
-            LOG.debug("{} endpoint(s) are now fillable: {}", readableEndPoints.size(), readableEndPoints);
-
-            if (readableEndPoints.isEmpty())
-                commandManager.quicSend(quicConnection);
-            else
-                for (QuicStreamEndPoint endPoint : readableEndPoints)
-                {
-                    FillInterest fillInterest = endPoint.onFillable();
-                    if (fillInterest != null)
-                    {
-                        tasks.offer(new FillInterestInvocable(fillInterest));
-                        executionStrategy.dispatch();
-                    }
-                }
+            if (LOG.isDebugEnabled())
+                LOG.debug("got packet of type {} for an existing connection: {} - buffer: p={} r={}", QuicheConnection.packetTypeAsString(buffer), connectionId, buffer.position(), buffer.remaining());
+            quicConnection.feedEncrypted(buffer, peer);
+            commandManager.quicSend(quicConnection);
+            quicConnection.processStreams(task ->
+            {
+                tasks.offer(task);
+                executionStrategy.dispatch();
+            });
         }
         bufferPool.release(buffer);
     }
@@ -350,6 +319,13 @@ public abstract class QuicConnectionManager extends ContainerLifeCycle
     protected void wakeupSelectorIfNeeded()
     {
         if (commandManager.needWrite())
+        {
+            LOG.debug("waking up selector");
             selector.wakeup();
+        }
+        else
+        {
+            LOG.debug("not waking up selector");
+        }
     }
 }
