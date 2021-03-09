@@ -30,52 +30,6 @@ public class QuicStreamEndPoint extends AbstractEndPoint
 {
     private static final Logger LOG = LoggerFactory.getLogger(QuicStreamEndPoint.class);
 
-    private final QuicConnection quicConnection;
-    //TODO: this atomic duplicates state that should be in FillInterest
-    private final AtomicBoolean fillInterested = new AtomicBoolean();
-    private final long streamId;
-
-    public QuicStreamEndPoint(Scheduler scheduler, QuicConnection quicConnection, long streamId)
-    {
-        super(scheduler);
-        this.quicConnection = quicConnection;
-        this.streamId = streamId;
-    }
-
-    @Override
-    public InetSocketAddress getLocalAddress()
-    {
-        return quicConnection.getLocalAddress();
-    }
-
-    @Override
-    public InetSocketAddress getRemoteAddress()
-    {
-        return quicConnection.getRemoteAddress();
-    }
-
-    public Task onSelected(boolean fillable, boolean flushable)
-    {
-        LOG.debug("onSelected fillable {} flushable {}", fillable, flushable);
-        if (fillable)
-            fillable = fillInterested.compareAndSet(true, false);
-
-        LOG.debug("onSelected after fillInterested check fillable {}", fillable);
-
-        // return task to complete the job
-        Task task = fillable
-            ? (flushable
-            ? _runCompleteWriteFillable
-            : _runFillable)
-            : (flushable
-            ? _runCompleteWrite
-            : null);
-
-        if (LOG.isDebugEnabled())
-            LOG.debug("onSelected task {}", task);
-        return task;
-    }
-
     private final Task _runCompleteWriteFillable = new Task("runCompleteWriteFillable")
     {
         @Override
@@ -102,7 +56,6 @@ public class QuicStreamEndPoint extends AbstractEndPoint
             getFillInterest().fillable();
         }
     };
-
     private final Task _runFillable = new Task("runFillable")
     {
         @Override
@@ -117,7 +70,6 @@ public class QuicStreamEndPoint extends AbstractEndPoint
             getFillInterest().fillable();
         }
     };
-
     private final Task _runCompleteWrite = new Task("runCompleteWrite")
     {
         @Override
@@ -133,23 +85,50 @@ public class QuicStreamEndPoint extends AbstractEndPoint
         }
     };
 
-    public abstract static class Task implements Invocable, Runnable
+    private final QuicConnection quicConnection;
+    //TODO: this atomic duplicates state that should be in FillInterest
+    private final AtomicBoolean fillInterested = new AtomicBoolean();
+    private final long streamId;
+
+    public QuicStreamEndPoint(Scheduler scheduler, QuicConnection quicConnection, long streamId)
     {
-        private final String op;
+        super(scheduler);
+        this.quicConnection = quicConnection;
+        this.streamId = streamId;
+    }
 
-        public Task(String op)
-        {
-            this.op = op;
-        }
+    @Override
+    public InetSocketAddress getLocalAddress()
+    {
+        return quicConnection.getLocalAddress();
+    }
 
-        @Override
-        public abstract InvocationType getInvocationType();
+    @Override
+    public InetSocketAddress getRemoteAddress()
+    {
+        return quicConnection.getRemoteAddress();
+    }
 
-        @Override
-        public String toString()
-        {
-            return op;
-        }
+    public Runnable onSelected(boolean fillable, boolean flushable)
+    {
+        LOG.debug("onSelected fillable {} flushable {}", fillable, flushable);
+        if (fillable)
+            fillable = fillInterested.compareAndSet(true, false);
+
+        LOG.debug("onSelected after fillInterested check fillable {}", fillable);
+
+        // return task to complete the job
+        Task task = fillable
+            ? (flushable
+            ? _runCompleteWriteFillable
+            : _runFillable)
+            : (flushable
+            ? _runCompleteWrite
+            : null);
+
+        if (LOG.isDebugEnabled())
+            LOG.debug("onSelected task {}", task);
+        return task;
     }
 
     @Override
@@ -160,7 +139,7 @@ public class QuicStreamEndPoint extends AbstractEndPoint
 
         int pos = BufferUtil.flipToFill(buffer);
         int read = quicConnection.readFromStream(streamId, buffer);
-        if (quicConnection.isFinished(streamId))
+        if (quicConnection.isStreamFinished(streamId))
             shutdownInput();
 
         BufferUtil.flipToFlush(buffer, pos);
@@ -173,7 +152,7 @@ public class QuicStreamEndPoint extends AbstractEndPoint
     {
         try
         {
-            quicConnection.shutdownInput(streamId);
+            quicConnection.shutdownStreamInput(streamId);
         }
         catch (IOException e)
         {
@@ -186,12 +165,18 @@ public class QuicStreamEndPoint extends AbstractEndPoint
     {
         try
         {
-            quicConnection.shutdownOutput(streamId);
+            quicConnection.shutdownStreamOutput(streamId);
         }
         catch (IOException e)
         {
             LOG.warn("Error shutting down output of stream {}", streamId, e);
         }
+    }
+
+    @Override
+    public void onOpen()
+    {
+        super.onOpen();
     }
 
     @Override
@@ -259,6 +244,25 @@ public class QuicStreamEndPoint extends AbstractEndPoint
     {
         LOG.debug("fill interested; currently interested? {}", fillInterested.get());
         fillInterested.set(true);
+    }
+
+    private abstract static class Task implements Invocable, Runnable
+    {
+        private final String op;
+
+        public Task(String op)
+        {
+            this.op = op;
+        }
+
+        @Override
+        public abstract InvocationType getInvocationType();
+
+        @Override
+        public String toString()
+        {
+            return op;
+        }
     }
 
     public interface Factory

@@ -103,7 +103,7 @@ public class QuicConnection
                 boolean writable = writableStreamIds.remove(readableStreamId);
                 QuicStreamEndPoint streamEndPoint = getOrCreateStreamEndPoint(readableStreamId);
                 LOG.debug("selected endpoint for read (combined write? {}) : {}", writable, streamEndPoint);
-                QuicStreamEndPoint.Task task = streamEndPoint.onSelected(true, writable);
+                Runnable task = streamEndPoint.onSelected(true, writable);
                 if (task != null)
                     taskProcessor.accept(task);
             }
@@ -111,7 +111,7 @@ public class QuicConnection
             {
                 QuicStreamEndPoint streamEndPoint = getOrCreateStreamEndPoint(writableStreamId);
                 LOG.debug("selected endpoint for write : {}", streamEndPoint);
-                QuicStreamEndPoint.Task task = streamEndPoint.onSelected(false, true);
+                Runnable task = streamEndPoint.onSelected(false, true);
                 if (task != null)
                     taskProcessor.accept(task);
             }
@@ -144,16 +144,6 @@ public class QuicConnection
         //TODO: when is a connection supposed to be closed?
 //        if (streamEndpoints.isEmpty())
 //            markClosed();
-    }
-
-    public void shutdownInput(long streamId) throws IOException
-    {
-        quicheConnection.shutdownStream(streamId, false);
-    }
-
-    public void shutdownOutput(long streamId) throws IOException
-    {
-        quicheConnection.shutdownStream(streamId, false);
     }
 
     public boolean isMarkedClosed()
@@ -201,7 +191,17 @@ public class QuicConnection
         return quicheConnection.readFromStream(streamId, buffer);
     }
 
-    public boolean isFinished(long streamId)
+    public void shutdownStreamInput(long streamId) throws IOException
+    {
+        quicheConnection.shutdownStream(streamId, false);
+    }
+
+    public void shutdownStreamOutput(long streamId) throws IOException
+    {
+        quicheConnection.shutdownStream(streamId, false);
+    }
+
+    public boolean isStreamFinished(long streamId)
     {
         return quicheConnection.isStreamFinished(streamId);
     }
