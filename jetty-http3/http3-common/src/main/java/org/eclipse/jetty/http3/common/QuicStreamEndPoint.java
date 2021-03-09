@@ -169,8 +169,35 @@ public class QuicStreamEndPoint extends AbstractEndPoint
     }
 
     @Override
+    protected void doShutdownInput()
+    {
+        try
+        {
+            quicConnection.shutdownInput(streamId);
+        }
+        catch (IOException e)
+        {
+            LOG.warn("Error shutting down input of stream {}", streamId, e);
+        }
+    }
+
+    @Override
+    protected void doShutdownOutput()
+    {
+        try
+        {
+            quicConnection.shutdownOutput(streamId);
+        }
+        catch (IOException e)
+        {
+            LOG.warn("Error shutting down output of stream {}", streamId, e);
+        }
+    }
+
+    @Override
     public void onClose(Throwable failure)
     {
+        super.onClose(failure);
         quicConnection.onStreamClosed(streamId);
     }
 
@@ -194,7 +221,6 @@ public class QuicStreamEndPoint extends AbstractEndPoint
                     break;
                 }
             }
-            quicConnection.flush();
             if (LOG.isDebugEnabled())
                 LOG.debug("flushed {} byte(s) - {}", flushed, this);
         }
@@ -224,7 +250,7 @@ public class QuicStreamEndPoint extends AbstractEndPoint
     @Override
     protected void onIncompleteFlush()
     {
-        LOG.warn("unimplemented onIncompleteFlush");
+        quicConnection.flush();
     }
 
     @Override

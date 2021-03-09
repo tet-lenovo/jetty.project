@@ -141,8 +141,19 @@ public class QuicConnection
     public void onStreamClosed(long streamId)
     {
         streamEndpoints.remove(streamId);
-        if (streamEndpoints.isEmpty())
-            markClosed();
+        //TODO: when is a connection supposed to be closed?
+//        if (streamEndpoints.isEmpty())
+//            markClosed();
+    }
+
+    public void shutdownInput(long streamId) throws IOException
+    {
+        quicheConnection.shutdownStream(streamId, false);
+    }
+
+    public void shutdownOutput(long streamId) throws IOException
+    {
+        quicheConnection.shutdownStream(streamId, false);
     }
 
     public boolean isMarkedClosed()

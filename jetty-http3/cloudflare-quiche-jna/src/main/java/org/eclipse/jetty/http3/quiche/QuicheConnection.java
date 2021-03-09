@@ -498,6 +498,15 @@ public class QuicheConnection
         return INSTANCE.quiche_conn_is_draining(quicheConn);
     }
 
+    public synchronized void shutdownStream(long streamId, boolean writeSide) throws IOException
+    {
+        int direction = writeSide ? LibQuiche.quiche_shutdown.QUICHE_SHUTDOWN_WRITE : LibQuiche.quiche_shutdown.QUICHE_SHUTDOWN_READ;
+        int rc = INSTANCE.quiche_conn_stream_shutdown(quicheConn, new uint64_t(streamId), direction, new uint64_t(0));
+        if (rc == 0 || rc == QUICHE_ERR_DONE)
+            return;
+        throw new IOException("failed to shutdown stream " + streamId + ": " + LibQuiche.quiche_error.errToString(rc));
+    }
+
     public synchronized boolean close() throws IOException
     {
         int rc = INSTANCE.quiche_conn_close(quicheConn, true, new uint64_t(0), null, new size_t(0));
