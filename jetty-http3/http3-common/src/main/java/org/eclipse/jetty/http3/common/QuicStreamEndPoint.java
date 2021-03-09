@@ -115,7 +115,7 @@ public class QuicStreamEndPoint extends AbstractEndPoint
         if (fillable)
             fillable = fillInterested.compareAndSet(true, false);
 
-        LOG.debug("onSelected after fillInterested check fillable {}", fillable);
+        LOG.debug("onSelected after fillInterested check, fillable={}", fillable);
 
         // return task to complete the job
         Task task = fillable
