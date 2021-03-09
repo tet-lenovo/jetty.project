@@ -111,7 +111,7 @@ public class QuicStreamEndPoint extends AbstractEndPoint
 
     public Runnable onSelected(boolean fillable, boolean flushable)
     {
-        LOG.debug("onSelected fillable {} flushable {}", fillable, flushable);
+        LOG.debug("onSelected fillable={} flushable={}", fillable, flushable);
         if (fillable)
             fillable = fillInterested.compareAndSet(true, false);
 
