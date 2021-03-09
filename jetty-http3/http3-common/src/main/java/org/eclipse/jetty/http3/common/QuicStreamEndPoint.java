@@ -198,6 +198,7 @@ public class QuicStreamEndPoint extends AbstractEndPoint
     public void onClose(Throwable failure)
     {
         super.onClose(failure);
+        shutdownOutput();
         quicConnection.onStreamClosed(streamId);
     }
 
