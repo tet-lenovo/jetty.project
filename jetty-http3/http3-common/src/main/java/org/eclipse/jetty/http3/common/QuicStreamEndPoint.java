@@ -34,14 +34,12 @@ public class QuicStreamEndPoint extends AbstractEndPoint
     //TODO: this atomic duplicates state that should be in FillInterest
     private final AtomicBoolean fillInterested = new AtomicBoolean();
     private final long streamId;
-    private final Flusher flusher;
 
-    public QuicStreamEndPoint(Scheduler scheduler, QuicConnection quicConnection, long streamId, Flusher flusher)
+    public QuicStreamEndPoint(Scheduler scheduler, QuicConnection quicConnection, long streamId)
     {
         super(scheduler);
         this.quicConnection = quicConnection;
         this.streamId = streamId;
-        this.flusher = flusher;
     }
 
     @Override
@@ -112,7 +110,7 @@ public class QuicStreamEndPoint extends AbstractEndPoint
                     break;
                 }
             }
-            flusher.flush(quicConnection);
+            quicConnection.flush();
             if (LOG.isDebugEnabled())
                 LOG.debug("flushed {} byte(s) - {}", flushed, this);
         }
@@ -154,11 +152,6 @@ public class QuicStreamEndPoint extends AbstractEndPoint
 
     public interface Factory
     {
-        QuicStreamEndPoint createQuicStreamEndPoint(QuicConnection quicConnection, long streamId, Flusher flusher);
-    }
-
-    public interface Flusher
-    {
-        void flush(QuicConnection quicConnection);
+        QuicStreamEndPoint createQuicStreamEndPoint(QuicConnection quicConnection, long streamId);
     }
 }

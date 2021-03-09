@@ -78,7 +78,19 @@ public class ServerQuicConnectionManager extends QuicConnectionManager
         else
         {
             LOG.debug("new connection accepted");
-            quicConnection = new QuicConnection(acceptedQuicheConnection, getLocalAddress(), peer, endpointFactory);
+            quicConnection = new QuicConnection(acceptedQuicheConnection, getLocalAddress(), peer, endpointFactory, qc ->
+            {
+                try
+                {
+                    LOG.debug("flushing {}", qc);
+                    commandManager.quicSend(qc);
+                    wakeupSelectorIfNeeded();
+                }
+                catch (IOException e)
+                {
+                    throw new RuntimeException(e);
+                }
+            });
         }
         return quicConnection;
     }

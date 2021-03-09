@@ -34,6 +34,7 @@ public class QuicConnection
     private static final Logger LOG = LoggerFactory.getLogger(QuicConnection.class);
 
     private final QuicStreamEndPoint.Factory endpointFactory;
+    private final Flusher flusher;
     private final QuicheConnection quicheConnection;
     private final Map<Long, QuicStreamEndPoint> streamEndpoints = new ConcurrentHashMap<>();
     private final InetSocketAddress localAddress;
@@ -41,12 +42,13 @@ public class QuicConnection
     private volatile Timeout timeout;
     private volatile boolean markedClosed;
 
-    public QuicConnection(QuicheConnection quicheConnection, InetSocketAddress localAddress, InetSocketAddress remoteAddress, QuicStreamEndPoint.Factory endpointFactory)
+    public QuicConnection(QuicheConnection quicheConnection, InetSocketAddress localAddress, InetSocketAddress remoteAddress, QuicStreamEndPoint.Factory endpointFactory, Flusher flusher)
     {
         this.quicheConnection = quicheConnection;
         this.localAddress = localAddress;
         this.remoteAddress = remoteAddress;
         this.endpointFactory = endpointFactory;
+        this.flusher = flusher;
     }
 
     public void dispose()
@@ -78,7 +80,7 @@ public class QuicConnection
      * @param peer address of the peer who sent the packet
      * @return a collection of QuicStreamEndPoints that need to be notified they have data to read
      */
-    public Collection<QuicStreamEndPoint> feedEncrypted(ByteBuffer buffer, InetSocketAddress peer, QuicStreamEndPoint.Flusher flusher) throws IOException
+    public Collection<QuicStreamEndPoint> feedEncrypted(ByteBuffer buffer, InetSocketAddress peer) throws IOException
     {
         LOG.debug("handling packet " + BufferUtil.toDetailString(buffer));
         remoteAddress = peer;
@@ -99,7 +101,7 @@ public class QuicConnection
                 long streamId = stream.getStreamId();
                 LOG.debug("stream {} is readable", streamId);
 
-                QuicStreamEndPoint streamEndPoint = getOrCreateStreamEndPoint(streamId, flusher);
+                QuicStreamEndPoint streamEndPoint = getOrCreateStreamEndPoint(streamId);
                 result.add(streamEndPoint);
             }
         }
@@ -111,13 +113,13 @@ public class QuicConnection
         return quicheConnection.getNegotiatedProtocol();
     }
 
-    public QuicStreamEndPoint getOrCreateStreamEndPoint(long streamId, QuicStreamEndPoint.Flusher flusher)
+    public QuicStreamEndPoint getOrCreateStreamEndPoint(long streamId)
     {
         QuicStreamEndPoint endPoint = streamEndpoints.compute(streamId, (sid, quicStreamEndPoint) ->
         {
             if (quicStreamEndPoint == null)
             {
-                quicStreamEndPoint = endpointFactory.createQuicStreamEndPoint(this, sid, flusher);
+                quicStreamEndPoint = endpointFactory.createQuicStreamEndPoint(this, sid);
                 LOG.debug("creating endpoint for stream {}", sid);
             }
             return quicStreamEndPoint;
@@ -183,6 +185,11 @@ public class QuicConnection
         return quicheConnection.isStreamFinished(streamId);
     }
 
+    public void flush()
+    {
+        flusher.flush(this);
+    }
+
     private static class Timeout
     {
         private final long timestampInNs;
@@ -198,5 +205,10 @@ public class QuicConnection
         {
             return System.nanoTime() - timestampInNs >= timeoutInNs;
         }
+    }
+
+    public interface Flusher
+    {
+        void flush(QuicConnection quicConnection);
     }
 }

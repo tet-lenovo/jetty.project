@@ -286,19 +286,7 @@ public abstract class QuicConnectionManager extends ContainerLifeCycle
         else
         {
             LOG.debug("got packet for an existing connection: " + connectionId + " - buffer: p=" + buffer.position() + " r=" + buffer.remaining());
-            Collection<QuicStreamEndPoint> readableEndPoints = quicConnection.feedEncrypted(buffer, peer, qc ->
-            {
-                try
-                {
-                    LOG.debug("flushing {}", qc);
-                    commandManager.quicSend(qc);
-                    wakeupSelectorIfNeeded();
-                }
-                catch (IOException e)
-                {
-                    throw new RuntimeException(e);
-                }
-            });
+            Collection<QuicStreamEndPoint> readableEndPoints = quicConnection.feedEncrypted(buffer, peer);
             LOG.debug("{} endpoint(s) are now fillable: {}", readableEndPoints.size(), readableEndPoints);
 
             if (readableEndPoints.isEmpty())

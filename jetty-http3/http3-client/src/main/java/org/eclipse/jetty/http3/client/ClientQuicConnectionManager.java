@@ -69,9 +69,7 @@ public class ClientQuicConnectionManager extends QuicConnectionManager
         {
             LOG.debug("quiche established connection {}", quicheConnectionId);
             pendingConnections.remove(peer);
-            quicConnection = new QuicConnection(quicheConnection, getLocalAddress(), peer, endpointFactory);
-
-            QuicStreamEndPoint quicStreamEndPoint = quicConnection.getOrCreateStreamEndPoint(4, qc ->
+            quicConnection = new QuicConnection(quicheConnection, getLocalAddress(), peer, endpointFactory, qc ->
             {
                 try
                 {
@@ -83,7 +81,9 @@ public class ClientQuicConnectionManager extends QuicConnectionManager
                 {
                     throw new RuntimeException(e);
                 }
-            }); // TODO generate a proper stream ID
+            });
+
+            QuicStreamEndPoint quicStreamEndPoint = quicConnection.getOrCreateStreamEndPoint(4); // TODO generate a proper stream ID
             Connection connection = connectingHolder.httpClientTransportOverQuic.newConnection(quicStreamEndPoint, connectingHolder.context);
             // TODO configure the connection, see other transports
             quicStreamEndPoint.setConnection(connection);
