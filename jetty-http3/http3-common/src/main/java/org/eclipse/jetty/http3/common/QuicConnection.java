@@ -102,7 +102,8 @@ public class QuicConnection
             {
                 boolean writable = writableStreamIds.remove(readableStreamId);
                 QuicStreamEndPoint streamEndPoint = getOrCreateStreamEndPoint(readableStreamId);
-                LOG.debug("selected endpoint for read (combined write? {}) : {}", writable, streamEndPoint);
+                if (LOG.isDebugEnabled())
+                    LOG.debug("selected endpoint for read{} : {}", (writable ? " and write" : ""), streamEndPoint);
                 Runnable task = streamEndPoint.onSelected(true, writable);
                 if (task != null)
                     taskProcessor.accept(task);

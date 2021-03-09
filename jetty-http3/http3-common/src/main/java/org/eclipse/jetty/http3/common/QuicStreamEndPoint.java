@@ -134,6 +134,7 @@ public class QuicStreamEndPoint extends AbstractEndPoint
     @Override
     public int fill(ByteBuffer buffer) throws IOException
     {
+        LOG.debug("filling");
         if (quicConnection.isQuicConnectionClosed())
             return -1;
 
@@ -152,6 +153,7 @@ public class QuicStreamEndPoint extends AbstractEndPoint
     {
         try
         {
+            LOG.debug("shutting down input of stream {}", streamId);
             quicConnection.shutdownStreamInput(streamId);
         }
         catch (IOException e)
@@ -165,6 +167,7 @@ public class QuicStreamEndPoint extends AbstractEndPoint
     {
         try
         {
+            LOG.debug("shutting down output of stream {}", streamId);
             quicConnection.shutdownStreamOutput(streamId);
         }
         catch (IOException e)
@@ -190,7 +193,7 @@ public class QuicStreamEndPoint extends AbstractEndPoint
     @Override
     public boolean flush(ByteBuffer... buffers) throws IOException
     {
-        LOG.debug("flush");
+        LOG.debug("flushing");
         if (quicConnection.isQuicConnectionClosed())
             throw new IOException("connection is closed");
 
@@ -200,6 +203,7 @@ public class QuicStreamEndPoint extends AbstractEndPoint
             for (ByteBuffer buffer : buffers)
             {
                 int written = quicConnection.writeToStream(streamId, buffer); // TODO: make sure that the only reason why written != buffer.remaining() is because Quiche is congested. That is currently assumed.
+                quicConnection.flush();
                 flushed += written;
                 if (buffer.remaining() != 0)
                 {
