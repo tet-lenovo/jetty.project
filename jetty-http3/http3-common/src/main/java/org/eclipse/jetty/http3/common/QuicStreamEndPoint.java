@@ -104,12 +104,15 @@ public class QuicStreamEndPoint extends AbstractEndPoint
         {
             for (ByteBuffer buffer : buffers)
             {
-                int written = quicConnection.writeToStream(streamId, buffer);
-                flusher.flush(quicConnection);
+                int written = quicConnection.writeToStream(streamId, buffer); // TODO: make sure that the only reason why written != buffer.remaining() is because Quiche is congested. That is currently assumed.
                 flushed += written;
                 if (buffer.remaining() != 0)
+                {
+                    LOG.debug("unconsumed buffer, {} remaining", buffer.remaining());
                     break;
+                }
             }
+            flusher.flush(quicConnection);
             if (LOG.isDebugEnabled())
                 LOG.debug("flushed {} byte(s) - {}", flushed, this);
         }

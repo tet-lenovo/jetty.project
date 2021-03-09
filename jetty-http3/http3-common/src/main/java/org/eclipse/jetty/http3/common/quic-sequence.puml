@@ -1,0 +1,28 @@
+@startuml
+'https://plantuml.com/sequence-diagram
+
+autonumber
+
+Application -> QuicStreamEndPoint: flush()
+QuicStreamEndPoint -> Quiche: writeToStream()
+QuicStreamEndPoint -> Quiche: drainEncrypted(buffer)
+QuicStreamEndPoint -> DatagramSocket: send(buffer)
+
+ConnectionManager -> ConnectionManager: select()
+ConnectionManager -> ConnectionManager: processReadableKey()
+ConnectionManager -> DatagramSocket: receive(buffer)
+ConnectionManager -> Quiche: feedEncrypted(buffer)
+ConnectionManager -> Quiche: processStreams()
+Quiche -> QuicStreamEndPoint: ewykExecute( () -> onSelected(readable, writable) )
+
+Application -> QuicStreamEndPoint: flush()
+QuicStreamEndPoint -> Quiche: writeToStream() // feed quiche with cleartext bytes
+QuicStreamEndPoint -> Quiche: drainEncrypted(buffer) // drain quiche for ciphertext bytes
+QuicStreamEndPoint -> DatagramSocket: send(buffer)
+
+Application -> QuicStreamEndPoint: fill()
+QuicStreamEndPoint -> Quiche: readFromStream() // drain quiche for cleartext bytes
+QuicStreamEndPoint -> Quiche: drainEncrypted(buffer) // drain quiche for ciphertext bytes (ACKs)
+QuicStreamEndPoint -> DatagramSocket: send(buffer)
+
+@enduml

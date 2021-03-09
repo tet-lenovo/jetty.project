@@ -170,7 +170,7 @@ public class CommandManager
 
             while (true)
             {
-                int quicSent = quicConnection.quicSend(buffer);
+                int quicSent = quicConnection.drainEncrypted(buffer);
                 if (quicSent == 0)
                 {
                     // Bug? quiche apparently does not send the stream frames after the connection has been closed

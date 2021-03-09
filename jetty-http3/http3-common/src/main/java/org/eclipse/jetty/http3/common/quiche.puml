@@ -1,0 +1,14 @@
+@startuml
+'https://plantuml.com/sequence-diagram
+
+autonumber
+
+SocketReader -> Quiche: drainEncrypted(buffer)
+SocketReader -> Quiche: feedEncrypted(buffer)
+
+Application -> Quiche: getReadableStreamIds()
+Application -> Quiche: getWritableStreamIds()
+Application -> Quiche: drainClearTextForStreamId(id, buffer) // TODO check that this is the moment Quiche enlarges the flow control window
+Application -> Quiche: feedClearTextForStreamId(id, buffer) // TODO check that this is the moment Quiche shrinks the flow control window
+
+@enduml

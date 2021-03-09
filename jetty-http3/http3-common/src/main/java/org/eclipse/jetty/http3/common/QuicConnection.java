@@ -64,7 +64,7 @@ public class QuicConnection
         return remoteAddress;
     }
 
-    public int quicSend(ByteBuffer buffer) throws IOException
+    public int drainEncrypted(ByteBuffer buffer) throws IOException
     {
         int quicSent = quicheConnection.send(buffer);
         long timeoutInMs = quicheConnection.nextTimeout();
@@ -78,7 +78,7 @@ public class QuicConnection
      * @param peer address of the peer who sent the packet
      * @return a collection of QuicStreamEndPoints that need to be notified they have data to read
      */
-    public Collection<QuicStreamEndPoint> quicRecv(ByteBuffer buffer, InetSocketAddress peer, QuicStreamEndPoint.Flusher flusher) throws IOException
+    public Collection<QuicStreamEndPoint> feedEncrypted(ByteBuffer buffer, InetSocketAddress peer, QuicStreamEndPoint.Flusher flusher) throws IOException
     {
         LOG.debug("handling packet " + BufferUtil.toDetailString(buffer));
         remoteAddress = peer;
