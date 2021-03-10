@@ -21,7 +21,6 @@ import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Iterator;
 import java.util.List;
 
 import com.sun.jna.ptr.PointerByReference;
@@ -517,11 +516,17 @@ public class QuicheConnection
         throw new IOException("failed to close connection: " + LibQuiche.quiche_error.errToString(rc));
     }
 
+    public synchronized void writeFinToStream(long streamId) throws IOException
+    {
+        int written = INSTANCE.quiche_conn_stream_send(quicheConn, new uint64_t(streamId), null, new size_t(0), true).intValue();
+        if (written == QUICHE_ERR_DONE)
+            return;
+        if (written < 0L)
+            throw new IOException("Quiche failed to write FIN to stream " + streamId + "; err=" + LibQuiche.quiche_error.errToString(written));
+    }
+
     public synchronized int writeToStream(long streamId, ByteBuffer buffer) throws IOException
     {
-        if (buffer == null || buffer.remaining() == 0)
-            throw new IllegalArgumentException("invalid buffer : " + buffer);
-
         int written = INSTANCE.quiche_conn_stream_send(quicheConn, new uint64_t(streamId), buffer, new size_t(buffer.remaining()), false).intValue();
         if (written == QUICHE_ERR_DONE)
             return 0;

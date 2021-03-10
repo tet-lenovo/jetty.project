@@ -186,7 +186,14 @@ public class QuicStreamEndPoint extends AbstractEndPoint
     public void onClose(Throwable failure)
     {
         super.onClose(failure);
-        shutdownOutput();
+        try
+        {
+            quicConnection.writeFinToStream(streamId);
+        }
+        catch (IOException e)
+        {
+            LOG.warn("Error sending FIN on stream {}", streamId, e);
+        }
         quicConnection.onStreamClosed(streamId);
     }
 

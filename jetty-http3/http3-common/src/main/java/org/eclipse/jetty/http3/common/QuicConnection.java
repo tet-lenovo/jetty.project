@@ -142,9 +142,6 @@ public class QuicConnection
     public void onStreamClosed(long streamId)
     {
         streamEndpoints.remove(streamId);
-        //TODO: when is a connection supposed to be closed?
-//        if (streamEndpoints.isEmpty())
-//            markClosed();
     }
 
     public boolean isMarkedClosed()
@@ -180,6 +177,11 @@ public class QuicConnection
     public boolean hasConnectionTimedOut()
     {
         return this.timeout.isReached();
+    }
+
+    public void writeFinToStream(long streamId) throws IOException
+    {
+        quicheConnection.writeFinToStream(streamId);
     }
 
     public int writeToStream(long streamId, ByteBuffer buffer) throws IOException
