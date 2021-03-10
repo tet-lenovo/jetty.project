@@ -497,6 +497,14 @@ public class QuicheConnection
         return INSTANCE.quiche_conn_is_draining(quicheConn);
     }
 
+    public synchronized long streamCapacity(long streamId) throws IOException
+    {
+        long value = INSTANCE.quiche_conn_stream_capacity(quicheConn, new uint64_t(streamId)).longValue();
+        if (value < 0)
+            throw new IOException("Quiche failed to read capacity of stream " + streamId + "; err=" + errToString(value));
+        return value;
+    }
+
     public synchronized void shutdownStream(long streamId, boolean writeSide) throws IOException
     {
         int direction = writeSide ? LibQuiche.quiche_shutdown.QUICHE_SHUTDOWN_WRITE : LibQuiche.quiche_shutdown.QUICHE_SHUTDOWN_READ;

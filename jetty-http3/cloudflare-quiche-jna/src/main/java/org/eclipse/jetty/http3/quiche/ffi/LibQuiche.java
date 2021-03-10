@@ -146,7 +146,6 @@ public interface LibQuiche extends Library
                 return "QUICHE_ERR_FINAL_SIZE";
             if (err == QUICHE_ERR_CONGESTION_CONTROL)
                 return "QUICHE_ERR_CONGESTION_CONTROL";
-
             return "?? " + err;
         }
     }
@@ -354,9 +353,15 @@ public interface LibQuiche extends Library
             QUICHE_SHUTDOWN_WRITE = 1;
     }
 
+    // Sets the priority for a stream.
+    int quiche_conn_stream_priority(quiche_conn conn, uint64_t stream_id,
+                                    uint8_t urgency, boolean incremental);
+
     // Shuts down reading or writing from/to the specified stream.
     int quiche_conn_stream_shutdown(quiche_conn conn, uint64_t stream_id,
                                     int /*quiche_shutdown*/ direction, uint64_t err);
+
+    ssize_t quiche_conn_stream_capacity(quiche_conn conn, uint64_t stream_id);
 
     // Returns true if all the data has been read from the specified stream.
     boolean quiche_conn_stream_finished(quiche_conn conn, uint64_t stream_id);
@@ -382,5 +387,4 @@ public interface LibQuiche extends Library
 
     // Frees the connection object.
     void quiche_conn_free(quiche_conn conn);
-
 }

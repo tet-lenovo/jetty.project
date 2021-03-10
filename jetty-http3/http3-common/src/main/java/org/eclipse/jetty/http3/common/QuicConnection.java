@@ -179,6 +179,11 @@ public class QuicConnection
         return this.timeout.isReached();
     }
 
+    public long streamCapacity(long streamId) throws IOException
+    {
+        return quicheConnection.streamCapacity(streamId);
+    }
+
     public void writeFinToStream(long streamId) throws IOException
     {
         quicheConnection.writeFinToStream(streamId);

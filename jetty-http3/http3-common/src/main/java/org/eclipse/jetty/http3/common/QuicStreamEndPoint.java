@@ -209,6 +209,7 @@ public class QuicStreamEndPoint extends AbstractEndPoint
         {
             for (ByteBuffer buffer : buffers)
             {
+                LOG.debug("stream capacity before writing to it : {}", quicConnection.streamCapacity(streamId));
                 int written = quicConnection.writeToStream(streamId, buffer); // TODO: make sure that the only reason why written != buffer.remaining() is because Quiche is congested. That is currently assumed.
                 quicConnection.flush();
                 flushed += written;
