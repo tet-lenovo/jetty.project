@@ -306,7 +306,7 @@ public class QuicheConnection
 
         LOGGER.debug("  < connection created");
         QuicheConnection quicheConnection = new QuicheConnection(quicheConn, quicheConfig);
-        quicheConnection.recv(packetRead);
+        quicheConnection.feedCipherText(packetRead);
         LOGGER.debug("accepted, immediately receiving the same packet - remaining in buffer: {}", packetRead.remaining());
         return quicheConnection;
     }
@@ -400,7 +400,7 @@ public class QuicheConnection
      * @return how many bytes were consumed.
      * @throws IOException
      */
-    public synchronized int recv(ByteBuffer buffer) throws IOException
+    public synchronized int feedCipherText(ByteBuffer buffer) throws IOException
     {
         if (quicheConn == null)
             throw new IOException("Cannot receive when not connected");
@@ -418,7 +418,7 @@ public class QuicheConnection
      * @return how many bytes were added to the buffer.
      * @throws IOException
      */
-    public synchronized int send(ByteBuffer buffer) throws IOException
+    public synchronized int drainCipherText(ByteBuffer buffer) throws IOException
     {
         if (quicheConn == null)
             throw new IOException("Cannot send when not connected");
@@ -478,6 +478,16 @@ public class QuicheConnection
             "]";
     }
 
+    public synchronized boolean close() throws IOException
+    {
+        int rc = INSTANCE.quiche_conn_close(quicheConn, true, new uint64_t(0), null, new size_t(0));
+        if (rc == 0)
+            return true;
+        if (rc == QUICHE_ERR_DONE)
+            return false;
+        throw new IOException("failed to close connection: " + LibQuiche.quiche_error.errToString(rc));
+    }
+
     public synchronized void dispose()
     {
         if (quicheConn != null)
@@ -514,17 +524,7 @@ public class QuicheConnection
         throw new IOException("failed to shutdown stream " + streamId + ": " + LibQuiche.quiche_error.errToString(rc));
     }
 
-    public synchronized boolean close() throws IOException
-    {
-        int rc = INSTANCE.quiche_conn_close(quicheConn, true, new uint64_t(0), null, new size_t(0));
-        if (rc == 0)
-            return true;
-        if (rc == QUICHE_ERR_DONE)
-            return false;
-        throw new IOException("failed to close connection: " + LibQuiche.quiche_error.errToString(rc));
-    }
-
-    public synchronized void writeFinToStream(long streamId) throws IOException
+    public synchronized void feedFinForStream(long streamId) throws IOException
     {
         int written = INSTANCE.quiche_conn_stream_send(quicheConn, new uint64_t(streamId), null, new size_t(0), true).intValue();
         if (written == QUICHE_ERR_DONE)
@@ -533,7 +533,7 @@ public class QuicheConnection
             throw new IOException("Quiche failed to write FIN to stream " + streamId + "; err=" + LibQuiche.quiche_error.errToString(written));
     }
 
-    public synchronized int writeToStream(long streamId, ByteBuffer buffer) throws IOException
+    public synchronized int feedClearTextForStream(long streamId, ByteBuffer buffer) throws IOException
     {
         int written = INSTANCE.quiche_conn_stream_send(quicheConn, new uint64_t(streamId), buffer, new size_t(buffer.remaining()), false).intValue();
         if (written == QUICHE_ERR_DONE)
@@ -544,7 +544,7 @@ public class QuicheConnection
         return written;
     }
 
-    public synchronized int readFromStream(long streamId, ByteBuffer buffer) throws IOException
+    public synchronized int drainClearTextForStream(long streamId, ByteBuffer buffer) throws IOException
     {
         bool_pointer fin = new bool_pointer();
         int written = INSTANCE.quiche_conn_stream_recv(quicheConn, new uint64_t(streamId), buffer, new size_t(buffer.remaining()), fin).intValue();

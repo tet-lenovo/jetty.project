@@ -64,9 +64,9 @@ public class QuicConnection
         return remoteAddress;
     }
 
-    public int drainEncrypted(ByteBuffer buffer) throws IOException
+    public int drainCipherText(ByteBuffer cipherText) throws IOException
     {
-        int quicSent = quicheConnection.send(buffer);
+        int quicSent = quicheConnection.drainCipherText(cipherText);
         long timeoutInMs = quicheConnection.nextTimeout();
         timeout = new Timeout(TimeUnit.MILLISECONDS.toNanos(timeoutInMs));
         LOG.debug("next timeout is in {}ms", timeoutInMs);
@@ -74,19 +74,20 @@ public class QuicConnection
     }
 
     /**
-     * @param buffer cipher text
+     * @param cipherText cipher text
      * @param peer address of the peer who sent the packet
      */
-    public void feedEncrypted(ByteBuffer buffer, InetSocketAddress peer) throws IOException
+    public int feedCipherText(ByteBuffer cipherText, InetSocketAddress peer) throws IOException
     {
-        LOG.debug("handling packet " + BufferUtil.toDetailString(buffer));
+        LOG.debug("handling packet " + BufferUtil.toDetailString(cipherText));
         remoteAddress = peer;
 
         boolean establishedBefore = quicheConnection.isConnectionEstablished();
-        quicheConnection.recv(buffer);
+        int fed = quicheConnection.feedCipherText(cipherText);
         boolean establishedAfter = quicheConnection.isConnectionEstablished();
         if (!establishedBefore && establishedAfter)
             LOG.debug("newly established connection, negotiated ALPN protocol: '{}'", quicheConnection.getNegotiatedProtocol());
+        return fed;
     }
 
     public void processStreams(Consumer<Runnable> taskProcessor)
@@ -186,17 +187,17 @@ public class QuicConnection
 
     public void writeFinToStream(long streamId) throws IOException
     {
-        quicheConnection.writeFinToStream(streamId);
+        quicheConnection.feedFinForStream(streamId);
     }
 
-    public int writeToStream(long streamId, ByteBuffer buffer) throws IOException
+    public int writeToStream(long streamId, ByteBuffer clearText) throws IOException
     {
-        return quicheConnection.writeToStream(streamId, buffer);
+        return quicheConnection.feedClearTextForStream(streamId, clearText);
     }
 
-    public int readFromStream(long streamId, ByteBuffer buffer) throws IOException
+    public int readFromStream(long streamId, ByteBuffer clearText) throws IOException
     {
-        return quicheConnection.readFromStream(streamId, buffer);
+        return quicheConnection.drainClearTextForStream(streamId, clearText);
     }
 
     public void shutdownStreamInput(long streamId) throws IOException

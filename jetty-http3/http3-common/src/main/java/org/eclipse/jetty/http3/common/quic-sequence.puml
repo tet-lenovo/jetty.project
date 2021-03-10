@@ -1,28 +1,25 @@
 @startuml
-'https://plantuml.com/sequence-diagram
 
 autonumber
-
-Application -> QuicStreamEndPoint: flush()
-QuicStreamEndPoint -> Quiche: writeToStream()
-QuicStreamEndPoint -> Quiche: drainEncrypted(buffer)
-QuicStreamEndPoint -> DatagramSocket: send(buffer)
 
 ConnectionManager -> ConnectionManager: select()
 ConnectionManager -> ConnectionManager: processReadableKey()
 ConnectionManager -> DatagramSocket: receive(buffer)
-ConnectionManager -> Quiche: feedEncrypted(buffer)
+ConnectionManager -> Quiche: feedCipherText(buffer)
 ConnectionManager -> Quiche: processStreams()
+Quiche -> Quiche: readableStreamIds()
+Quiche -> Quiche: writableStreamIds()
 Quiche -> QuicStreamEndPoint: ewykExecute( () -> onSelected(readable, writable) )
-
-Application -> QuicStreamEndPoint: flush()
-QuicStreamEndPoint -> Quiche: writeToStream() // feed quiche with cleartext bytes
-QuicStreamEndPoint -> Quiche: drainEncrypted(buffer) // drain quiche for ciphertext bytes
-QuicStreamEndPoint -> DatagramSocket: send(buffer)
+QuicStreamEndPoint -> Application: fillable()
 
 Application -> QuicStreamEndPoint: fill()
-QuicStreamEndPoint -> Quiche: readFromStream() // drain quiche for cleartext bytes
-QuicStreamEndPoint -> Quiche: drainEncrypted(buffer) // drain quiche for ciphertext bytes (ACKs)
+QuicStreamEndPoint -> Quiche: drainClearTextForStream() // drain quiche for cleartext
+QuicStreamEndPoint -> Quiche: drainCipherText(buffer) // drain quiche for ciphertext (ACKs)
+QuicStreamEndPoint -> DatagramSocket: send(buffer)
+
+Application -> QuicStreamEndPoint: flush()
+QuicStreamEndPoint -> Quiche: feedClearTextForStream() // feed quiche with cleartext
+QuicStreamEndPoint -> Quiche: drainCipherText(buffer) // drain quiche for ciphertext
 QuicStreamEndPoint -> DatagramSocket: send(buffer)
 
 @enduml

@@ -170,8 +170,8 @@ public class CommandManager
 
             while (true)
             {
-                int quicSent = quicConnection.drainEncrypted(buffer);
-                if (quicSent == 0)
+                int drained = quicConnection.drainCipherText(buffer);
+                if (drained == 0)
                 {
                     // The quic spec forbids sending stream frames after the connection has been closed
                     // -> use a mark-as-closed mechanism and first send the data then close
@@ -187,7 +187,7 @@ public class CommandManager
                     buffer = null;
                     return true;
                 }
-                LOG.debug("quiche wants to send {} byte(s)", quicSent);
+                LOG.debug("quiche wants to send {} byte(s)", drained);
                 buffer.flip();
                 int channelSent = channel.send(buffer, quicConnection.getRemoteAddress());
                 LOG.debug("channel sent {} byte(s)", channelSent);

@@ -51,7 +51,7 @@ public class ClientQuicConnectionManager extends QuicConnectionManager
     }
 
     @Override
-    protected QuicConnection createConnection(ByteBuffer buffer, InetSocketAddress peer, QuicheConnectionId quicheConnectionId) throws IOException
+    protected QuicConnection createConnection(ByteBuffer cipherText, InetSocketAddress peer, QuicheConnectionId quicheConnectionId) throws IOException
     {
         LOG.debug("got packet for a new connection");
 
@@ -60,8 +60,8 @@ public class ClientQuicConnectionManager extends QuicConnectionManager
             return null;
 
         QuicheConnection quicheConnection = connectingHolder.quicheConnection;
-        int remaining = buffer.remaining();
-        int recv = quicheConnection.recv(buffer);
+        int remaining = cipherText.remaining();
+        int recv = quicheConnection.feedCipherText(cipherText);
         LOG.debug("quiche consumed {}/{} bytes", recv, remaining);
 
         QuicConnection quicConnection;
@@ -107,13 +107,13 @@ public class ClientQuicConnectionManager extends QuicConnectionManager
             LOG.debug("quiche cannot establish connection yet");
             quicConnection = null;
 
-            ByteBuffer sendBuffer = getByteBufferPool().acquire(LibQuiche.QUICHE_MIN_CLIENT_INITIAL_LEN, true);
-            BufferUtil.flipToFill(sendBuffer);
-            int sent = quicheConnection.send(sendBuffer);
+            ByteBuffer cipherTextToSend = getByteBufferPool().acquire(LibQuiche.QUICHE_MIN_CLIENT_INITIAL_LEN, true);
+            BufferUtil.flipToFill(cipherTextToSend);
+            int sent = quicheConnection.drainCipherText(cipherTextToSend);
             LOG.debug("quiche wants to send {} byte(s)", sent);
-            sendBuffer.flip();
+            cipherTextToSend.flip();
 
-            channelWrite(sendBuffer, peer);
+            channelWrite(cipherTextToSend, peer);
         }
         return quicConnection;
     }
@@ -122,13 +122,13 @@ public class ClientQuicConnectionManager extends QuicConnectionManager
     {
         QuicheConnection connection = QuicheConnection.connect(getQuicheConfig(), target);
         ByteBufferPool bufferPool = getByteBufferPool();
-        ByteBuffer buffer = bufferPool.acquire(LibQuiche.QUICHE_MIN_CLIENT_INITIAL_LEN, true);
-        BufferUtil.flipToFill(buffer);
-        connection.send(buffer);
+        ByteBuffer cipherText = bufferPool.acquire(LibQuiche.QUICHE_MIN_CLIENT_INITIAL_LEN, true);
+        BufferUtil.flipToFill(cipherText);
+        connection.drainCipherText(cipherText);
         //connection.nextTimeout(); // TODO quiche timeout handling is missing for pending connections
-        buffer.flip();
+        cipherText.flip();
         pendingConnections.put(target, new ConnectingHolder(connection, context, httpClientTransportOverQuic));
-        channelWrite(buffer, target);
+        channelWrite(cipherText, target);
         wakeupSelectorIfNeeded();
     }
 

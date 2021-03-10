@@ -232,7 +232,7 @@ public abstract class QuicConnectionManager extends ContainerLifeCycle
                 {
                     quicConnection.markClosed();
                     it.remove();
-                    LOG.debug("connection closed due to timeout; remaining connections: " + connections);
+                    LOG.debug("connection closed due to timeout; remaining connections: {}", connections);
                 }
                 commandManager.quicTimeout(quicConnection, closed);
             }
@@ -243,16 +243,16 @@ public abstract class QuicConnectionManager extends ContainerLifeCycle
     {
         ByteBufferPool bufferPool = getByteBufferPool();
 
-        ByteBuffer buffer = bufferPool.acquire(LibQuiche.QUICHE_MIN_CLIENT_INITIAL_LEN, true);
-        BufferUtil.flipToFill(buffer);
-        InetSocketAddress peer = (InetSocketAddress)channel.receive(buffer);
-        buffer.flip();
+        ByteBuffer cipherText = bufferPool.acquire(LibQuiche.QUICHE_MIN_CLIENT_INITIAL_LEN, true);
+        BufferUtil.flipToFill(cipherText);
+        InetSocketAddress peer = (InetSocketAddress)channel.receive(cipherText);
+        cipherText.flip();
 
-        QuicheConnectionId connectionId = QuicheConnectionId.fromPacket(buffer);
+        QuicheConnectionId connectionId = QuicheConnectionId.fromPacket(cipherText);
         QuicConnection quicConnection = connections.get(connectionId);
         if (quicConnection == null)
         {
-            quicConnection = createConnection(buffer, peer, connectionId);
+            quicConnection = createConnection(cipherText, peer, connectionId);
             if (quicConnection != null)
             {
                 commandManager.quicSend(quicConnection);
@@ -262,8 +262,8 @@ public abstract class QuicConnectionManager extends ContainerLifeCycle
         else
         {
             if (LOG.isDebugEnabled())
-                LOG.debug("got packet of type {} for an existing connection: {} - buffer: p={} r={}", QuicheConnection.packetTypeAsString(buffer), connectionId, buffer.position(), buffer.remaining());
-            quicConnection.feedEncrypted(buffer, peer);
+                LOG.debug("got packet of type {} for an existing connection: {} - buffer: p={} r={}", QuicheConnection.packetTypeAsString(cipherText), connectionId, cipherText.position(), cipherText.remaining());
+            quicConnection.feedCipherText(cipherText, peer);
             commandManager.quicSend(quicConnection);
             quicConnection.processStreams(task ->
             {
@@ -271,7 +271,7 @@ public abstract class QuicConnectionManager extends ContainerLifeCycle
                 executionStrategy.dispatch();
             });
         }
-        bufferPool.release(buffer);
+        bufferPool.release(cipherText);
     }
 
     private void processWritableKey() throws IOException
@@ -282,24 +282,26 @@ public abstract class QuicConnectionManager extends ContainerLifeCycle
     private void changeInterest(boolean needWrite)
     {
         int ops = SelectionKey.OP_READ | (needWrite ? SelectionKey.OP_WRITE : 0);
-        if (selectionKey.interestOps() == ops)
+        if (selectionKey.interestOps() != ops)
+        {
+            LOG.debug("setting key interest to {}", interestToString(ops));
+            selectionKey.interestOps(ops);
+        }
+        else
         {
             LOG.debug("interest already at {}, no change needed", interestToString(ops));
-            return;
         }
-        LOG.debug("setting key interest to {}", interestToString(ops));
-        selectionKey.interestOps(ops);
     }
 
     private static String interestToString(int ops)
     {
-        String interest = "READ";
         if ((ops & SelectionKey.OP_WRITE) == SelectionKey.OP_WRITE)
-            interest += "|WRITE";
-        return interest;
+            return "READ|WRITE";
+        else
+            return "READ";
     }
 
-    protected abstract QuicConnection createConnection(ByteBuffer buffer, InetSocketAddress peer, QuicheConnectionId connectionId) throws IOException;
+    protected abstract QuicConnection createConnection(ByteBuffer cipherText, InetSocketAddress peer, QuicheConnectionId connectionId) throws IOException;
 
     protected InetSocketAddress getLocalAddress() throws IOException
     {

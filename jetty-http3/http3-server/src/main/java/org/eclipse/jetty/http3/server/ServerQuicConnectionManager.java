@@ -50,28 +50,28 @@ public class ServerQuicConnectionManager extends QuicConnectionManager
     }
 
     @Override
-    protected QuicConnection createConnection(ByteBuffer buffer, InetSocketAddress peer, QuicheConnectionId connectionId) throws IOException
+    protected QuicConnection createConnection(ByteBuffer cipherText, InetSocketAddress peer, QuicheConnectionId connectionId) throws IOException
     {
         QuicheConfig quicheConfig = getQuicheConfig();
 
         QuicConnection quicConnection;
         LOG.debug("got packet for a new connection");
-        QuicheConnection acceptedQuicheConnection = QuicheConnection.tryAccept(quicheConfig, peer, buffer);
+        QuicheConnection acceptedQuicheConnection = QuicheConnection.tryAccept(quicheConfig, peer, cipherText);
         if (acceptedQuicheConnection == null)
         {
             LOG.debug("accepting connection failed, trying negotiation");
             ByteBufferPool bufferPool = getByteBufferPool();
-            ByteBuffer negotiationBuffer = bufferPool.acquire(LibQuiche.QUICHE_MIN_CLIENT_INITIAL_LEN, true);
-            BufferUtil.flipToFill(negotiationBuffer);
-            if (QuicheConnection.negotiate(peer, buffer, negotiationBuffer))
+            ByteBuffer negotiationCipherText = bufferPool.acquire(LibQuiche.QUICHE_MIN_CLIENT_INITIAL_LEN, true);
+            BufferUtil.flipToFill(negotiationCipherText);
+            if (QuicheConnection.negotiate(peer, cipherText, negotiationCipherText))
             {
                 LOG.debug("negotiation possible, writing proposal");
-                channelWrite(negotiationBuffer, peer);
+                channelWrite(negotiationCipherText, peer);
             }
             else
             {
                 LOG.debug("negotiation not possible, ignoring connection attempt");
-                bufferPool.release(negotiationBuffer);
+                bufferPool.release(negotiationCipherText);
             }
             quicConnection = null;
         }
