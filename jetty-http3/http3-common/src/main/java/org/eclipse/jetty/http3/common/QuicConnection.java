@@ -206,7 +206,7 @@ public class QuicConnection
 
     public void shutdownStreamOutput(long streamId) throws IOException
     {
-        quicheConnection.shutdownStream(streamId, false);
+        quicheConnection.shutdownStream(streamId, true);
     }
 
     public boolean isStreamFinished(long streamId)
