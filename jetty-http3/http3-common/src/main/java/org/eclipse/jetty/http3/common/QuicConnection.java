@@ -105,17 +105,13 @@ public class QuicConnection
                 QuicStreamEndPoint streamEndPoint = getOrCreateStreamEndPoint(readableStreamId);
                 if (LOG.isDebugEnabled())
                     LOG.debug("selected endpoint for read{} : {}", (writable ? " and write" : ""), streamEndPoint);
-                Runnable task = streamEndPoint.onSelected(true, writable);
-                if (task != null)
-                    taskProcessor.accept(task);
+                streamEndPoint.onSelected(true, writable, taskProcessor);
             }
             for (Long writableStreamId : writableStreamIds)
             {
                 QuicStreamEndPoint streamEndPoint = getOrCreateStreamEndPoint(writableStreamId);
                 LOG.debug("selected endpoint for write : {}", streamEndPoint);
-                Runnable task = streamEndPoint.onSelected(false, true);
-                if (task != null)
-                    taskProcessor.accept(task);
+                streamEndPoint.onSelected(false, true, taskProcessor);
             }
         }
     }

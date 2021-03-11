@@ -16,7 +16,7 @@ package org.eclipse.jetty.http3.common;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 
 import org.eclipse.jetty.io.AbstractEndPoint;
 import org.eclipse.jetty.io.EofException;
@@ -86,8 +86,6 @@ public class QuicStreamEndPoint extends AbstractEndPoint
     };
 
     private final QuicConnection quicConnection;
-    //TODO: this atomic duplicates state that should be in FillInterest
-    private final AtomicBoolean fillInterested = new AtomicBoolean();
     private final long streamId;
 
     public QuicStreamEndPoint(Scheduler scheduler, QuicConnection quicConnection, long streamId)
@@ -109,13 +107,12 @@ public class QuicStreamEndPoint extends AbstractEndPoint
         return quicConnection.getRemoteAddress();
     }
 
-    public Runnable onSelected(boolean fillable, boolean flushable)
+    public void onSelected(boolean fillable, boolean flushable, Consumer<Runnable> taskProcessor)
     {
         LOG.debug("onSelected fillable={} flushable={}", fillable, flushable);
         if (fillable)
-            fillable = fillInterested.compareAndSet(true, false);
-
-        LOG.debug("onSelected after fillInterested check, fillable={}", fillable);
+            fillable = getFillInterest().isInterested();
+        LOG.debug("onSelected after check, fillable={} flushable={}", fillable, flushable);
 
         // return task to complete the job
         Task task = fillable
@@ -128,7 +125,9 @@ public class QuicStreamEndPoint extends AbstractEndPoint
 
         if (LOG.isDebugEnabled())
             LOG.debug("onSelected task {}", task);
-        return task;
+
+        if (task != null)
+            taskProcessor.accept(task);
     }
 
     @Override
@@ -254,8 +253,6 @@ public class QuicStreamEndPoint extends AbstractEndPoint
     @Override
     protected void needsFillInterest() throws IOException
     {
-        LOG.debug("fill interested; currently interested? {}", fillInterested.get());
-        fillInterested.set(true);
     }
 
     private abstract static class Task implements Invocable, Runnable
