@@ -16,6 +16,7 @@ package org.eclipse.jetty.http3.common;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
 import org.eclipse.jetty.io.AbstractEndPoint;
@@ -87,6 +88,7 @@ public class QuicStreamEndPoint extends AbstractEndPoint
 
     private final QuicConnection quicConnection;
     private final long streamId;
+    private final AtomicBoolean savedFillable = new AtomicBoolean();
 
     public QuicStreamEndPoint(Scheduler scheduler, QuicConnection quicConnection, long streamId)
     {
@@ -111,7 +113,14 @@ public class QuicStreamEndPoint extends AbstractEndPoint
     {
         LOG.debug("onSelected fillable={} flushable={}", fillable, flushable);
         if (fillable)
+        {
             fillable = getFillInterest().isInterested();
+            if (!fillable)
+            {
+                LOG.debug("fillable but not fill interested, saving interest for later");
+                savedFillable.set(true);
+            }
+        }
         LOG.debug("onSelected after check, fillable={} flushable={}", fillable, flushable);
 
         // return task to complete the job
@@ -251,8 +260,12 @@ public class QuicStreamEndPoint extends AbstractEndPoint
     }
 
     @Override
-    protected void needsFillInterest() throws IOException
+    protected void needsFillInterest()
     {
+        boolean fillableNow = savedFillable.getAndSet(false);
+        LOG.debug("needsFillInterest, fillableNow={}", fillableNow);
+        if (fillableNow)
+            onSelected(true, false, Runnable::run);
     }
 
     private abstract static class Task implements Invocable, Runnable
