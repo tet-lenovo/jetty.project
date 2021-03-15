@@ -249,6 +249,8 @@ public class QpackEncoder implements Dumpable
         return !DO_NOT_HUFFMAN.contains(httpField.getHeader());
     }
 
+    // TODO: Pass in buffer.
+    // TODO: Use metadata instead of HttpFields.
     public ByteBuffer encode(int streamId, HttpFields httpFields) throws QpackException
     {
         // Verify that we can encode without errors.
